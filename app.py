@@ -199,7 +199,16 @@ def completed_missions_count():
     c.close()
     return int(row["cnt"])
 
-
+def get_daily_missions_count():
+    """Считает количество миссий, выполненных именно сегодня"""
+    c = db()
+    today = date.today().isoformat()
+    row = c.execute(
+        "SELECT COUNT(*) AS cnt FROM mission_completions WHERE user_id=? AND mission_date=?",
+        (USER_ID, today)
+    ).fetchone()
+    c.close()
+    return int(row["cnt"])
 
 # -----------------------------
 # Shooter
@@ -1794,13 +1803,14 @@ def shooter_page():
     )
 
 def render_dynamic_background():
-    completed = completed_missions_count()
+    # Считаем прогресс на основе выполненных миссий СЕГОДНЯ
+    completed_today = get_daily_missions_count()
+    
+    # Теперь максимум 6 уникальных миссий в день (3 тренировки + знание + чек-ин + неделя)
+    progress = min(completed_today / 6.0, 1.0)
 
-    # Чем больше заданий, тем сильнее раздвигаются тучи
-    progress = min(completed / 4, 1.0)
-
-    # 0 -> серое небо
-    # 1 -> голубое небо
+    # 0.0 -> серое небо (утро)
+    # 1.0 -> голубое ясное небо (все задания выполнены)
     gray_alpha = 0.75 - progress * 0.65
     cloud_opacity = 0.95 - progress * 0.8
 
@@ -1825,6 +1835,7 @@ def render_dynamic_background():
                     #eef7f5 100%
                 );
             position: relative;
+            transition: background 2s ease;
         }}
 
         .stApp::before,
@@ -2319,29 +2330,183 @@ page=st.session_state.page
 # -----------------------------
 # Home
 # -----------------------------
-if page=="Главная":
-    a,b,c,d=st.columns(4); a.metric("XP",u["xp"]); b.metric("Уровень",u["level"]); c.metric("Монеты",f"🪙 {u['coins']}"); d.metric("Занятий за неделю",f"{week_training_count()}/{u['weekly_goal']}")
-    st.subheader("🎯 Мои цели")
-    goals={"regularity":("Регулярность реабилитации","Поддерживать выполнение согласованной программы."),"activity":("Повседневная активность","Поддерживать переносимость активности в рамках плана."),"self_management":("Самоменеджмент","Лучше понимать симптомы и свой план действий."),"education":("Знания о ХОБЛ","Разбираться в реабилитации и самонаблюдении.")}
-    cols=st.columns(2)
-    for i,g in enumerate([x for x in u["goals"].split(",") if x]):
-        t,desc=goals.get(g,goals["regularity"])
-        with cols[i%2]: st.markdown(f"<div class='card'><b>{t}</b><br><span class='muted'>{desc}</span></div>",unsafe_allow_html=True)
-    st.subheader("Сегодня")
-    missions=[("exercise","🏃","Лёгочная реабилитация","Guided-сессия с пошаговыми интервалами.",100),("education","🧠","Знание дня","Обучение с разбором правильного ответа.",30),("checkin","❤️","Самонаблюдение","Одышка, кашель, мокрота и энергия.",20),("weekly","🎯","Задача недели","Барьер → стратегия → реалистичный план.",60)]
-    for typ,icon,title,desc,xp in missions:
-        st.markdown(f"<div class='card'><h3>{icon} {title}</h3><p>{desc}</p><span class='small'>+{xp} XP</span></div>",unsafe_allow_html=True)
-        if mission_done(typ): st.success("Уже выполнено / учтено")
-        elif st.button("Открыть",key="home_"+typ): reset_mission_state(); st.session_state.selected_mission=typ; go("Детальная миссия"); st.rerun()
-    st.subheader("👤 Твой персонаж")
-    st.markdown(
-        avatar_svg(
-            TOPS[u["equipped_top"]][1],
-            BOTTOMS[u["equipped_bottom"]][1],
-            SHOES[u["equipped_shoes"]][1]
-        ),
-        unsafe_allow_html=True
-    )
+if page == "Главная":
+    # --- HERO SECTION ---
+    col1, col2 = st.columns([1.2, 0.8], gap="large")
+    
+    with col1:
+        st.markdown("""
+        <div style="padding-top: 10px;">
+            <span class="pill">COPD • Gamified Digital Health</span>
+            <h1 style="font-size: 2.8rem; margin-top: 10px; margin-bottom: 15px; color: #2c5e4f;">Путь дыхания</h1>
+            <p style="font-size: 1.15rem; color: #4a5852; line-height: 1.6; margin-bottom: 25px;">
+                Преврати ежедневную лёгочную реабилитацию в увлекательное приключение. 
+                Выполняй задания по здоровью, зарабатывай ресурсы и <b>защищай свои лёгкие</b> в эпической мини-игре!
+            </p>
+            <div style="display: flex; gap: 12px;">
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎯 Начать миссии сегодня", type="primary", use_container_width=True):
+            go("Миссии")
+            st.rerun()
+            
+        if st.button("🎮 Играть в «Защиту лёгких»", type="secondary", use_container_width=True):
+            go("Шутер")
+            st.rerun()
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col2:
+        # Встроенная SVG-графика: Щит, защищающий лёгкие + игровая символика
+        st.markdown("""
+        <div class="hero-graphic">
+        <svg viewBox="0 0 300 280" width="100%" xmlns="http://www.w3.org/2000/svg">
+            <!-- Фоновый круг -->
+            <circle cx="150" cy="140" r="120" fill="#e8f4f0" />
+            <!-- Щит -->
+            <path d="M150 40 L230 80 L230 150 C230 200 150 250 150 250 C150 250 70 200 70 150 L70 80 Z" fill="#ffffff" stroke="#4f8f7b" stroke-width="4"/>
+            <!-- Лёгкие (стилизованные) -->
+            <path d="M110 110 C90 110 80 130 80 150 C80 180 100 190 110 190 C120 190 125 180 125 170 L125 130 C125 120 120 110 110 110 Z" fill="#8ED1C2" opacity="0.9"/>
+            <path d="M190 110 C210 110 220 130 220 150 C220 180 200 190 190 190 C180 190 175 180 175 170 L175 130 C175 120 180 110 190 110 Z" fill="#8ED1C2" opacity="0.9"/>
+            <!-- Трахея -->
+            <rect x="140" y="85" width="20" height="40" rx="10" fill="#4f8f7b"/>
+            <!-- Игровая звезда (награда) -->
+            <polygon points="150,60 155,75 170,75 158,85 163,100 150,90 137,100 142,85 130,75 145,75" fill="#F19B63" stroke="#fff" stroke-width="2"/>
+            <!-- Искры -->
+            <circle cx="90" cy="90" r="4" fill="#A98BEA"/>
+            <circle cx="210" cy="100" r="5" fill="#F19B63"/>
+            <circle cx="100" cy="210" r="3" fill="#8ED1C2"/>
+        </svg>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- CORE GAME LOOP EXPLANATION ---
+    st.markdown("### 🔄 Как это работает?")
+    c1, arrow1, c2, arrow2, c3 = st.columns([1, 0.1, 1, 0.1, 1])
+    
+    with c1:
+        st.markdown("""
+        <div class="loop-card">
+            <span class="loop-icon">🫁</span>
+            <b>Выполняй задания</b>
+            <p class="muted" style="font-size:0.9rem; margin-top:8px;">Дыхательная гимнастика, аэробные или силовые модули по 2-5 минут.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with arrow1:
+        st.markdown("<div class='loop-arrow'>➔</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("""
+        <div class="loop-card">
+            <span class="loop-icon">🪙</span>
+            <b>Получай награды</b>
+            <p class="muted" style="font-size:0.9rem; margin-top:8px;">Зарабатывай XP, монеты для магазина и <b>попытки для шутера</b>.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with arrow2:
+        st.markdown("<div class='loop-arrow'>➔</div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown("""
+        <div class="loop-card" style="background: linear-gradient(135deg, #2c5e4f 0%, #4f8f7b 100%); color: white; border: none;">
+            <span class="loop-icon">🎯</span>
+            <b style="color:white;">Защищай лёгкие</b>
+            <p style="font-size:0.9rem; margin-top:8px; color: #e8f4f0;">Трать попытки в мини-игре, побеждай боссов и прокачивай персонажа!</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- HUD METRICS ---
+    st.markdown("### 📊 Твой прогресс")
+    h1, h2, h3, h4 = st.columns(4)
+    with h1:
+        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Уровень</div><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['level']}</div></div>", unsafe_allow_html=True)
+    with h2:
+        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Опыт (XP)</div><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['xp']}</div></div>", unsafe_allow_html=True)
+    with h3:
+        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Монеты</div><div style='font-size:1.8rem; font-weight:800; color:#F19B63;'>🪙 {u['coins']}</div></div>", unsafe_allow_html=True)
+    with h4:
+        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Попытки шутера</div><div style='font-size:1.8rem; font-weight:800; color:#A98BEA;'>🎯 {get_shooter_state()['attempts']}</div></div>", unsafe_allow_html=True)
+
+    st.markdown(f"**Цель на неделю:** {week_training_count()} / {u['weekly_goal']} занятий")
+    st.progress(min(week_training_count() / max(u['weekly_goal'], 1), 1.0))
+
+    st.markdown("---")
+
+    # --- TODAY'S MISSIONS ---
+    st.markdown("### 📋 Задания на сегодня")
+    st.caption("Каждое уникальное задание можно выполнить 1 раз в день для получения награды. Повторять можно сколько угодно!")
+    
+    missions = [
+        ("exercise", "🏃", "Лёгочная реабилитация", "Выбери модуль: дыхание, аэробика или сила", 100, 50),
+        ("education", "🧠", "Знание дня", "Ответь на вопрос о ХОБЛ", 30, 10),
+        ("checkin", "❤️", "Самонаблюдение", "Оцени одышку, кашель и энергию", 20, 5),
+        ("weekly", "🎯", "Задача недели", "Преодолей барьер и составь план", 60, 15)
+    ]
+    
+    for typ, icon, title, desc, xp, coins in missions:
+        is_done = mission_done(typ)
+        
+        # Для exercise проверяем, сколько из 3 модулей сделано
+        if typ == "exercise":
+            done_count = sum(1 for mod in REHAB_MODULES.values() if mission_done(mod["mission_type"]))
+            reward_text = f"+{xp} XP, +{coins}🪙, +1🎯"
+            status_text = f"Выполнено модулей: {done_count}/3" if done_count > 0 else "Не начато"
+        else:
+            reward_text = f"+{xp} XP, +{coins}🪙"
+            status_text = "Выполнено ✅" if is_done else "Ожидает"
+
+        st.markdown(f"""
+        <div class="mission-card" style="opacity: {'0.7' if is_done and typ != 'exercise' else '1.0'}">
+            <div style="font-size: 2rem; margin-right: 16px;">{icon}</div>
+            <div class="mission-info">
+                <b style="font-size: 1.1rem;">{title}</b>
+                <div class="muted" style="font-size: 0.9rem; margin-top: 4px;">{desc}</div>
+                <div style="font-size: 0.8rem; color: #4f8f7b; font-weight: 600; margin-top: 4px;">{status_text}</div>
+            </div>
+            <div class="mission-reward">
+                {reward_text}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Кнопки действий
+        col_btn1, col_btn2 = st.columns([3, 1])
+        with col_btn1:
+            if typ == "exercise":
+                if done_count < 3:
+                    if st.button("Выбрать модуль тренировки", key=f"home_start_{typ}", type="primary" if done_count==0 else "secondary"):
+                        reset_mission_state()
+                        st.session_state.selected_mission = typ
+                        go("Детальная миссия")
+                        st.rerun()
+                else:
+                    st.success("🏆 Все модули на сегодня пройдены! Можно повторить для здоровья, но без наград.", icon="✅")
+            else:
+                if is_done:
+                    st.success("Уже выполнено", icon="✅")
+                else:
+                    if st.button("Открыть задание", key=f"home_start_{typ}", type="primary"):
+                        reset_mission_state()
+                        st.session_state.selected_mission = typ
+                        go("Детальная миссия")
+                        st.rerun()
+
+    st.markdown("---")
+    
+    # --- CHARACTER TEASER ---
+    st.markdown("### 👤 Твой персонаж")
+    st.caption("Выполняй задания, зарабатывай монеты и покупай новую экипировку в магазине!")
+    
+    c_avatar, c_room = st.columns([1, 2])
+    with c_avatar:
+        st.markdown(avatar_svg(TOPS[u["equipped_top"]][1], BOTTOMS[u["equipped_bottom"]][1], SHOES[u["equipped_shoes"]][1]), unsafe_allow_html=True)
+        if st.button("Перейти в Магазин / Персонаж", use_container_width=True):
+            go("Магазин")
+            st.rerun()
+    with c_room:
+        st.markdown(room_svg(ROOMS[u['room_theme']][2], ROOMS[u['room_theme']][3]), unsafe_allow_html=True)
 
 # -----------------------------
 # Missions
