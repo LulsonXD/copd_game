@@ -1,6 +1,7 @@
 import html
 import sqlite3
 import time
+import json 
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -1941,8 +1942,16 @@ def complete_mission(kind, xp, coins):
 
 
 def week_training_count():
-    t = date.today(); monday = t - timedelta(days=t.weekday())
-    c = db(); n = c.execute("SELECT COUNT(*) n FROM mission_completions WHERE user_id=? AND mission_type='exercise' AND mission_date BETWEEN ? AND ?", (USER_ID, monday.isoformat(), t.isoformat())).fetchone()["n"]; c.close(); return int(n)
+    t = date.today()
+    monday = t - timedelta(days=t.weekday())
+    c = db()
+    # Считаем ЛЮБОЙ модуль, начинающийся с 'exercise_'
+    n = c.execute(
+        "SELECT COUNT(*) as n FROM mission_completions WHERE user_id=? AND mission_type LIKE 'exercise_%' AND mission_date BETWEEN ? AND ?", 
+        (USER_ID, monday.isoformat(), t.isoformat())
+    ).fetchone()["n"]
+    c.close()
+    return int(n)
 
 
 def save_checkin(values):
@@ -2014,9 +2023,9 @@ ROOMS = {"living_room": ("Уютная гостиная", 0, "#EEE7DB", "#83A08A
 LOCATIONS = {"home": ("Дом", 0), "park": ("Парк", 500), "mountains": ("Горы", 700)}
 
 WORKOUT_STEPS = [
-    ("Подготовка", 45, "Сядьте или встаньте удобно. Расслабьте плечи и приготовьтесь следовать следующему интервалу."),
-    ("Аэробная часть", 90, "Выполняйте назначенную вам активность в комфортном темпе согласно своей программе реабилитации."),
-    ("Восстановление", 30, "Снизьте темп и спокойно восстановитесь перед следующим этапом."),
+    ("Подготовка", 5, "Сядьте или встаньте удобно. Расслабьте плечи и приготовьтесь следовать следующему интервалу."),
+    ("Аэробная часть", 5, "Выполняйте назначенную вам активность в комфортном темпе согласно своей программе реабилитации."),
+    ("Восстановление", 5, "Снизьте темп и спокойно восстановитесь перед следующим этапом."),
     ("Вдох", 2, "Мягко вдохните через нос. Не форсируйте вдох."),
     ("Выдох", 4, "Плавно выдыхайте через слегка сомкнутые губы."),
     ("Вдох", 2, "Следующий мягкий вдох через нос."),
@@ -2066,10 +2075,186 @@ def item_tile(item_id, name, color, price, category):
 
 
 # -----------------------------
+# Rehab Modules Data & Component
+# -----------------------------
+
+REHAB_MODULES = {
+    "breathing": {
+        "mission_type": "exercise_breathing", # <--- ДОБАВЛЕНО
+        "title": "🫁 Дыхательная гимнастика",
+        "desc": "Тренировка диафрагмального дыхания и выдоха через сомкнутые губы. Снижает одышку.",
+        "color": "#8ED1C2",
+        "steps": [
+            {"title": "Подготовка", "duration": 15, "instruction": "Сядьте удобно, спина прямая. Расслабьте плечи.", "anim": "relax"},
+            {"title": "Вдох носом", "duration": 4, "instruction": "Медленно вдохните через нос. Живот должен подняться.", "anim": "inhale"},
+            {"title": "Выдох через губы", "duration": 6, "instruction": "Сложите губы трубочкой. Медленно и плавно выдыхайте.", "anim": "exhale"},
+            {"title": "Практика", "duration": 60, "instruction": "Повторяйте цикл: вдох на 4 счета, выдох на 6 счетов.", "anim": "cycle"},
+            {"title": "Завершение", "duration": 10, "instruction": "Сделайте глубокий вдох, потянитесь и медленно выдохните.", "anim": "relax"}
+        ]
+    },
+    "aerobic": {
+        "mission_type": "exercise_aerobic", # <--- ДОБАВЛЕНО
+        "title": "🚶 Аэробная нагрузка",
+        "desc": "Улучшает выносливость. Выполняйте в комфортном темпе, не допуская сильной одышки.",
+        "color": "#F19B63",
+        "steps": [
+            {"title": "Разминка", "duration": 30, "instruction": "Марш на месте или медленная ходьба по комнате.", "anim": "warmup"},
+            {"title": "Основная часть", "duration": 120, "instruction": "Умеренная ходьба. При одышке замедлитесь и дышите через сомкнутые губы.", "anim": "walk"},
+            {"title": "Контроль", "duration": 30, "instruction": "Остановитесь. Проверьте самочувствие. При необходимости отдохните.", "anim": "pulse"},
+            {"title": "Заминка", "duration": 60, "instruction": "Очень медленная ходьба с постепенным переходом на спокойное дыхание.", "anim": "cooldown"}
+        ]
+    },
+    "strength": {
+        "mission_type": "exercise_strength", # <--- ДОБАВЛЕНО
+        "title": "💪 Легкая силовая (верхний пояс)",
+        "desc": "Укрепление мышц рук облегчает дыхание, снижая нагрузку на вспомогательную мускулатуру.",
+        "color": "#A98BEA",
+        "steps": [
+            {"title": "Исходное положение", "duration": 15, "instruction": "Сядьте на стул. Спина прямая. Можно взять легкие предметы (0.5л).", "anim": "relax"},
+            {"title": "Подъем рук вперед", "duration": 45, "instruction": "На вдохе медленно поднимите руки до уровня плеч. На выдохе опустите.", "anim": "lift"},
+            {"title": "Отдых и дыхание", "duration": 30, "instruction": "Опустите руки. Сделайте 3-4 цикла дыхания через сомкнутые губы.", "anim": "exhale"},
+            {"title": "Разведение в стороны", "duration": 45, "instruction": "На вдохе разведите руки в стороны. На выдохе верните в исходное положение.", "anim": "lift"},
+            {"title": "Расслабление", "duration": 30, "instruction": "Встряхните кисти, опустите плечи. Глубокий вдох и медленный выдох.", "anim": "relax"}
+        ]
+    }
+}
+
+def workout_component_html(module_key, steps_json, mission_type):
+    """Генерирует HTML/JS компонент для плавной анимированной тренировки без блокировки Python."""
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    body {{ font-family: 'Segoe UI', Arial, sans-serif; text-align: center; color: #26332c; margin: 0; padding: 20px; background: #f8faf9; }}
+    .container {{ max-width: 600px; margin: 0 auto; }}
+    .progress-bar {{ width: 100%; height: 12px; background: #e0e7e3; border-radius: 6px; overflow: hidden; margin-bottom: 24px; }}
+    .progress-fill {{ height: 100%; background: #4f8f7b; width: 0%; transition: width 0.5s ease; }}
+    .timer {{ font-size: 4.5rem; font-weight: 800; color: #2c5e4f; margin: 10px 0; font-variant-numeric: tabular-nums; }}
+    .step-title {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }}
+    .instruction {{ font-size: 1.15rem; line-height: 1.5; color: #4a5852; background: #fff; padding: 20px; border-radius: 16px; border: 1px solid #dce7df; min-height: 80px; display: flex; align-items: center; justify-content: center; }}
+    
+    /* Анимации */
+    .anim-box {{ width: 160px; height: 160px; margin: 20px auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }}
+    
+    @keyframes breatheIn {{ 0% {{ transform: scale(1); background: #a8dadc; }} 100% {{ transform: scale(1.6); background: #457b9d; }} }}
+    @keyframes breatheOut {{ 0% {{ transform: scale(1.6); background: #457b9d; }} 100% {{ transform: scale(1); background: #a8dadc; }} }}
+    @keyframes pulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.1); }} }}
+    @keyframes walk {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-15px); }} }}
+    @keyframes lift {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-20px); }} }}
+    @keyframes relax {{ 0%, 100% {{ opacity: 0.6; transform: scale(1); }} 50% {{ opacity: 1; transform: scale(1.05); }} }}
+
+    .anim-inhale {{ animation: breatheIn 4s ease-in-out infinite alternate; }}
+    .anim-exhale {{ animation: breatheOut 6s ease-in-out infinite alternate; }}
+    .anim-cycle {{ animation: breatheIn 4s ease-in-out infinite alternate; }} /* Упрощенно для цикла */
+    .anim-walk {{ animation: walk 1s ease-in-out infinite; }}
+    .anim-lift {{ animation: lift 3s ease-in-out infinite; }}
+    .anim-pulse {{ animation: pulse 1.2s ease-in-out infinite; }}
+    .anim-relax {{ animation: relax 3s ease-in-out infinite; }}
+    .anim-warmup {{ animation: pulse 1.5s ease-in-out infinite; }}
+    .anim-cooldown {{ animation: relax 4s ease-in-out infinite; }}
+
+    .icon {{ font-size: 4rem; }}
+    .btn-stop {{ margin-top: 30px; padding: 12px 24px; background: #e76f51; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 600; }}
+    .btn-stop:hover {{ background: #d65a3b; }}
+    .disclaimer {{ font-size: 0.8rem; color: #889; margin-top: 20px; }}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="step-title" id="stepTitle">Загрузка...</div>
+    <div class="timer" id="timer">00:00</div>
+    <div class="anim-box" id="animBox"><div class="icon" id="animIcon">🫁</div></div>
+    <div class="instruction" id="instruction">Подготовка к началу...</div>
+    <button class="btn-stop" onclick="finishWorkout(false)">⏹ Прервать тренировку</button>
+    <div class="disclaimer">⚠️ При головокружении или сильной одышке немедленно прекратите упражнение.</div>
+</div>
+
+<script>
+const steps = {steps_json};
+const missionType = "{mission_type}";
+let currentStep = 0;
+let timeLeft = steps[0].duration;
+let totalTime = steps.reduce((sum, step) => sum + step.duration, 0);
+let elapsed = 0;
+let timerInterval = null;
+
+const icons = {{
+    inhale: "🌬️", exhale: "💨", cycle: "🔄", walk: "🚶", 
+    lift: "🏋️", pulse: "❤️", relax: "🧘", warmup: "🔥", cooldown: "🧊"
+}};
+
+function updateUI() {{
+    const step = steps[currentStep];
+    document.getElementById("stepTitle").innerText = step.title;
+    document.getElementById("instruction").innerText = step.instruction;
+    document.getElementById("timer").innerText = formatTime(timeLeft);
+    document.getElementById("animIcon").innerText = icons[step.anim] || "🫁";
+    
+    const animBox = document.getElementById("animBox");
+    animBox.className = "anim-box anim-" + step.anim;
+    
+    const progress = ((elapsed + (step.duration - timeLeft)) / totalTime) * 100;
+    document.getElementById("progressFill").style.width = progress + "%";
+}}
+
+function formatTime(seconds) {{
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return m + ":" + s;
+}}
+
+function nextStep() {{
+    if (currentStep < steps.length - 1) {{
+        currentStep++;
+        timeLeft = steps[currentStep].duration;
+        updateUI();
+    }} else {{
+        finishWorkout(true);
+    }}
+}}
+
+function finishWorkout(completed) {{
+    clearInterval(timerInterval);
+    try {{
+        // Сигнал Streamlit через скрытую кнопку, как в шутере
+        const btn = window.parent.document.querySelector(".st-key-workout_complete_btn button");
+        if (btn) {{
+            window.parent.document.querySelector(".st-key-workout_complete_btn input").value = completed ? "success" : "aborted";
+            btn.click();
+        }}
+    }} catch (e) {{
+        console.error("Streamlit signal failed", e);
+    }}
+}}
+
+function tick() {{
+    if (timeLeft > 0) {{
+        timeLeft--;
+        elapsed++;
+        updateUI();
+    }} else {{
+        nextStep();
+    }}
+}}
+
+// Старт
+updateUI();
+timerInterval = setInterval(tick, 1000);
+</script>
+</body>
+</html>
+"""
+
+
+# -----------------------------
 # UI state
 # -----------------------------
 for k,v in {"page":"Главная","selected_mission":"exercise","result":None,"knowledge_checked":False,"weekly_step":1}.items():
     if k not in st.session_state: st.session_state[k]=v
+
 
 
 def reset_mission_state():
@@ -2175,32 +2360,75 @@ elif page=="Миссии":
 # -----------------------------
 elif page=="Детальная миссия":
     typ=st.session_state.selected_mission
-    if typ=="exercise":
+    if typ == "exercise":
         st.subheader("🏃 Лёгочная реабилитация")
-        st.caption("Демонстрационный guided-протокол. Не является индивидуальным медицинским назначением.")
-        if mission_done("exercise"):
-            st.success("Тренировка сегодня уже учтена.")
-        else:
-            if "w_step" not in st.session_state:
-                st.session_state.w_step=0; st.session_state.w_remaining=WORKOUT_STEPS[0][1]; st.session_state.w_running=True
-            step=st.session_state.w_step; remaining=st.session_state.w_remaining; title,sec,instr=WORKOUT_STEPS[step]
-            st.markdown(f"**Этап {step+1} из {len(WORKOUT_STEPS)}**")
-            st.progress((step+1)/len(WORKOUT_STEPS))
-            st.markdown(f"<div class='bigstage'>{title}</div>",unsafe_allow_html=True)
-            st.markdown(f"<div class='instruction'><b>Сейчас:</b><br>{html.escape(instr)}</div>",unsafe_allow_html=True)
-            st.markdown(f"<div class='timer'>{remaining:02d}</div>",unsafe_allow_html=True)
-            if st.session_state.w_running:
-                if remaining>1:
-                    st.session_state.w_remaining-=1; time.sleep(1); st.rerun()
-                elif step+1 < len(WORKOUT_STEPS):
-                    st.session_state.w_step+=1; st.session_state.w_remaining=WORKOUT_STEPS[step+1][1]; st.rerun()
+        st.info("⚠️ **Важно:** Выполняйте упражнения в комфортном темпе. Прекратите при головокружении или сильной одышке. Тренироваться можно сколько угодно, но награда дается 1 раз в день за каждый уникальный модуль.")
+        
+        # Подсчет, сколько модулей уже выполнено сегодня
+        completed_today = sum(1 for mod in REHAB_MODULES.values() if mission_done(mod["mission_type"]))
+        st.progress(completed_today / 3, text=f"Выполнено модулей сегодня: {completed_today}/3")
+        
+        cols = st.columns(3)
+        for i, (key, mod) in enumerate(REHAB_MODULES.items()):
+            with cols[i]:
+                is_done = mission_done(mod["mission_type"])
+                
+                st.markdown(f"""
+                <div style="border:1px solid #e2e7e3; border-radius:16px; padding:16px; text-align:center; background:#fff; height:100%; opacity: {'0.7' if is_done else '1.0'}">
+                    <div style="font-size:2.5rem; margin-bottom:8px;">{mod['title'].split()[0]}</div>
+                    <b>{mod['title'].split(' ', 1)[1]}</b>
+                    <p style="font-size:0.85rem; color:#68726e; margin-top:8px;">{mod['desc']}</p>
+                    <p style="font-size:0.8rem; color:#4f8f7b; font-weight:600;">⏱ ~{sum(s['duration'] for s in mod['steps'])//60} мин</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if is_done:
+                    st.success("✅ Награда получена", icon="✅")
+                    if st.button("Повторить без награды", key=f"retry_{key}", use_container_width=True):
+                        st.session_state.active_rehab_module = key
+                        st.rerun()
                 else:
-                    inserted=complete_mission("exercise",100,50)
-                    st.session_state.result={"title":"Тренировка завершена","body":"Guided-сессия полностью пройдена и сохранена в постоянной базе.","xp":100 if inserted else 0}
-                    for k in ["w_step","w_remaining","w_running"]: st.session_state.pop(k,None)
-                    go("Результат"); st.rerun()
-            else:
-                if st.button("▶ Продолжить",type="primary"): st.session_state.w_running=True; st.rerun()
+                    if st.button(f"Начать: {mod['title'].split(' ', 1)[1]}", key=f"start_{key}", type="primary", use_container_width=True):
+                        st.session_state.active_rehab_module = key
+                        st.rerun()
+        
+        # Активная фаза тренировки
+        if "active_rehab_module" in st.session_state:
+            mod_key = st.session_state.active_rehab_module
+            mod = REHAB_MODULES[mod_key]
+            
+            st.markdown("---")
+            st.markdown(f"### {mod['title']}")
+            
+            # Отображаем HTML-компонент с анимацией
+            components.html(
+                workout_component_html(mod_key, json.dumps(mod['steps']), mod["mission_type"]),
+                height=550,
+                scrolling=False
+            )
+            
+            st.markdown("<div style='text-align:center; margin-top:15px;'>", unsafe_allow_html=True)
+            st.warning("Нажмите кнопку ниже, когда выполните все шаги, показанные в анимации выше.")
+            
+            if st.button("🏆 Завершить тренировку", type="primary", use_container_width=True):
+                # Пытаемся записать уникальный тип миссии. 
+                # Если она уже есть сегодня, complete_mission вернет False и не начислит награду.
+                inserted = complete_mission(mod["mission_type"], 100, 50)
+                
+                if inserted:
+                    msg = f"Модуль '{mod['title']}' успешно пройден! Вы получили **+100 XP** и **+50 🪙**. Также вам начислена дополнительная попытка для шутера!"
+                else:
+                    msg = f"Вы уже получали награду за модуль '{mod['title']}' сегодня. Но вы отлично поработали! Повторная тренировка полезна для здоровья, но игровые награды за него уже начислены."
+                    
+                st.session_state.result = {
+                    "title": "Тренировка завершена!",
+                    "body": msg,
+                    "xp": 100 if inserted else 0
+                }
+                st.session_state.pop("active_rehab_module", None)
+                go("Результат")
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
     elif typ=="education":
         st.subheader("🧠 Знание дня")
         q={"q":"Что полезно регулярно отмечать в дневнике при ХОБЛ?","opts":["Одышку, кашель, мокроту и общее самочувствие","Только температуру","Только шаги"],"correct":0,"why":"Регулярное наблюдение помогает замечать изменения относительно привычного состояния и обсуждать их со специалистом.","more":["Одышка — субъективное ощущение затруднённого дыхания.","Изменения кашля и мокроты можно записывать как часть самонаблюдения.","Дневник не ставит диагноз."]}
