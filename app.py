@@ -648,19 +648,22 @@ async function toggleFullscreen() {{
             await document.exitFullscreen();
         }} else if (gameEl.requestFullscreen) {{
             await gameEl.requestFullscreen();
+            if (screen.orientation && screen.orientation.lock) {{
+                try {{ await screen.orientation.lock("landscape"); }} catch (_) {{}}
+            }}
         }} else if (gameEl.webkitRequestFullscreen) {{
             gameEl.webkitRequestFullscreen();
         }}
     }} catch (err) {{
-        // Fullscreen can be blocked by the browser/iframe; the game remains playable.
+        // Fullscreen may be unavailable in some mobile browsers.
     }}
-    setTimeout(resetTouchState, 80);
+    setTimeout(recalculateGameLayout, 100);
 }}
 
 fullscreenBtn.addEventListener("click", toggleFullscreen);
 document.addEventListener("fullscreenchange", function() {{
     updateFullscreenButton();
-    setTimeout(resetTouchState, 100);
+    setTimeout(recalculateGameLayout, 80);
 }});
 
 const LEVEL = {level};
@@ -684,7 +687,6 @@ let victory = false;
 let boss = null;
 let bossSpawned = false;
 let lastShot = 0;
-let kills = 0;
 let startTime = Date.now();
 let lastSpawn = Date.now();
 let elapsedSeconds = 0;
@@ -700,14 +702,12 @@ const player = {{
 const mouse = {{
     x: W / 2,
     y: H / 2,
-    down: false
+    down: false,
+    pointerId: null
 }};
 
 // ---------- Управление ----------
-
-function focusGame() {{
-    canvas.focus();
-}}
+function focusGame() {{ canvas.focus(); }}
 
 const controlKeys = new Set([
     "KeyW", "KeyA", "KeyS", "KeyD",
@@ -736,18 +736,19 @@ document.addEventListener("keyup", function(e) {{
 }});
 window.addEventListener("blur", function() {{
     mouse.down = false;
+    mouse.pointerId = null;
     keys = {{}};
-    joystick.active = false;
-    joystick.x = 0;
-    joystick.y = 0;
-    resetJoystickVisual();
+    resetTouchState();
 }});
 
-canvas.addEventListener("mousemove", function(e) {{
+function pointerToWorld(e) {{
     const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     mouse.x = (e.clientX - rect.left) * W / rect.width;
     mouse.y = (e.clientY - rect.top) * H / rect.height;
-}});
+}}
+
+canvas.addEventListener("mousemove", function(e) {{ pointerToWorld(e); }});
 
 // ---------- Мобильное управление ----------
 const joystick = {{ active:false, pointerId:null, x:0, y:0 }};
@@ -802,37 +803,38 @@ joystickEl.addEventListener("pointercancel", releaseJoystick);
 joystickEl.addEventListener("lostpointercapture", function() {{ releaseJoystick(); }});
 
 function setAimFromPointer(e) {{
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = (e.clientX - rect.left) * W / rect.width;
-    mouse.y = (e.clientY - rect.top) * H / rect.height;
+    pointerToWorld(e);
     mouse.down = true;
+    mouse.pointerId = e.pointerId;
 }}
 aimPad.addEventListener("pointerdown", function(e) {{
     e.preventDefault(); e.stopPropagation();
-    aimPad.setPointerCapture(e.pointerId);
+    mouse.pointerId = e.pointerId;
+    try {{ aimPad.setPointerCapture(e.pointerId); }} catch (_) {{}}
     setAimFromPointer(e);
 }});
 aimPad.addEventListener("pointermove", function(e) {{
-    if (e.pointerType === "touch" || e.pressure > 0 || e.buttons) {{
+    if (mouse.pointerId === e.pointerId) {{
         e.preventDefault();
         setAimFromPointer(e);
     }}
 }});
 function releaseAim(e) {{
-    mouse.down = false;
-    if (e && e.pointerId != null) {{
-        try {{ aimPad.releasePointerCapture(e.pointerId); }} catch (_) {{}}
+    if (!e || mouse.pointerId === e.pointerId) {{
+        mouse.down = false;
+        mouse.pointerId = null;
     }}
 }}
 aimPad.addEventListener("pointerup", releaseAim);
 aimPad.addEventListener("pointercancel", releaseAim);
-aimPad.addEventListener("pointerleave", function(e) {{
-    // Do not stop shooting while the finger is still captured.
+aimPad.addEventListener("lostpointercapture", function(e) {{
+    // Do not cancel another pointer after a rotation/multi-touch event.
+    if (mouse.pointerId === e.pointerId) releaseAim(e);
 }});
-aimPad.addEventListener("lostpointercapture", function() {{ mouse.down = false; }});
 
 function resetTouchState() {{
     mouse.down = false;
+    mouse.pointerId = null;
     joystick.active = false;
     joystick.pointerId = null;
     joystick.x = 0;
@@ -840,26 +842,29 @@ function resetTouchState() {{
     resetJoystickVisual();
 }}
 
+function recalculateGameLayout() {{
+    // Canvas remains a 3:2 logical battlefield, but always recalculates its
+    // visible size after rotation/fullscreen so touch coordinates stay correct.
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width && rect.height) {{
+        pointerToWorld({{clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2}});
+    }}
+}}
+
 window.addEventListener("resize", function() {{
-    resetTouchState();
-    setTimeout(function() {{
-        // Force the browser to recalculate the iframe/canvas touch geometry after rotation.
-        canvas.getBoundingClientRect();
-    }}, 100);
+    // Do not destroy active controls on a normal resize. Rotation itself
+    // cancels the old browser pointers; new touches work immediately.
+    setTimeout(recalculateGameLayout, 50);
+    setTimeout(recalculateGameLayout, 300);
 }});
 window.addEventListener("orientationchange", function() {{
     resetTouchState();
-    setTimeout(function() {{
-        canvas.getBoundingClientRect();
-        focusGame();
-    }}, 250);
+    setTimeout(recalculateGameLayout, 100);
+    setTimeout(recalculateGameLayout, 500);
 }});
 
-document.addEventListener("touchmove", function(e) {{
-    if (joystick.active || mouse.down) e.preventDefault();
-}}, {{ passive:false }});
-document.addEventListener("touchend", resetTouchState, {{ passive:true }});
-document.addEventListener("touchcancel", resetTouchState, {{ passive:true }});
+// Important: don't listen for document-level touchend here. With two fingers,
+// releasing the joystick must NOT cancel the shooting finger.
 
 // ---------- Враги ----------
 
@@ -1996,43 +2001,57 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 u=get_user()
+
+# На мобильном закрываем именно drawer после нажатия пункта навигации.
+# Флаг хранится в sessionStorage, поэтому переживает Streamlit rerun.
 st.markdown("""<script>
 (function() {
-    if (window.innerWidth > 700) return;
-    const doc = window.parent.document;
+  const w = window.parent;
+  const d = w.document;
+  if (w.__copdSidebarWatcher) return;
+  w.__copdSidebarWatcher = true;
 
-    function closeSidebar() {
-        try {
-            const sidebar = doc.querySelector('[data-testid="stSidebar"]');
-            if (!sidebar) return;
-            const btn = sidebar.querySelector('[data-testid="stSidebarCollapseButton"]') ||
-                        sidebar.querySelector('button[aria-label*="Close"]') ||
-                        sidebar.querySelector('button[aria-label*="закры"]');
-            if (btn) btn.click();
-        } catch (e) {}
+  function isMobile() { return w.innerWidth <= 700; }
+  function closeSidebar() {
+    if (!isMobile()) return;
+    const sidebar = d.querySelector('[data-testid=\"stSidebar\"]');
+    if (!sidebar) return;
+    const buttons = sidebar.querySelectorAll('button');
+    for (const b of buttons) {
+      const label = ((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).toLowerCase();
+      if (label.includes('close') || label.includes('закры') || b.getAttribute('data-testid') === 'stSidebarCollapseButton') {
+        b.click();
+        return;
+      }
     }
+  }
 
-    // Navigation buttons are recreated by Streamlit after every rerun, so use
-    // event delegation instead of binding once to the old buttons.
-    if (!window.__copdSidebarCloseInstalled) {
-        window.__copdSidebarCloseInstalled = true;
-        doc.addEventListener('click', function(e) {
-            if (window.innerWidth > 700) return;
-            const sidebar = e.target.closest('[data-testid="stSidebar"]');
-            if (!sidebar) return;
-            const button = e.target.closest('button');
-            if (!button) return;
-            const text = (button.innerText || '').trim();
-            const navNames = ['Главная','Миссии','Шутер','Симптомы','Знания о ХОБЛ','Прогресс','Персонаж','Магазин'];
-            if (navNames.includes(text)) {
-                setTimeout(closeSidebar, 50);
-                setTimeout(closeSidebar, 250);
-                setTimeout(closeSidebar, 700);
-            }
-        }, true);
-    }
+  d.addEventListener('click', function(e) {
+    if (!isMobile()) return;
+    const sidebar = e.target.closest('[data-testid=\"stSidebar\"]');
+    if (!sidebar) return;
+    const button = e.target.closest('button');
+    if (!button) return;
+    const testid = button.getAttribute('data-testid') || '';
+    if (testid === 'stSidebarCollapseButton') return;
+    try { w.sessionStorage.setItem('copdCloseSidebar','1'); } catch (_) {}
+    // Run before Streamlit rerender and again after it.
+    closeSidebar();
+    requestAnimationFrame(closeSidebar);
+    setTimeout(closeSidebar, 50);
+    setTimeout(closeSidebar, 250);
+  }, true);
 
-    setTimeout(closeSidebar, 150);
+  const observer = new MutationObserver(function() {
+    try {
+      if (w.sessionStorage.getItem('copdCloseSidebar') === '1') {
+        closeSidebar();
+        w.sessionStorage.removeItem('copdCloseSidebar');
+      }
+    } catch (_) {}
+  });
+  observer.observe(d.body, {subtree:true, childList:true});
+  w.__copdSidebarObserver = observer;
 })();
 </script>""", unsafe_allow_html=True)
 
