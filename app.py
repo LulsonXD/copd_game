@@ -413,7 +413,7 @@ def shooter_game_html(level, game_token):
 
     # Каждый уровень длится несколько минут. С ростом уровня увеличивается время,
     # скорость врагов и их запас здоровья.
-    level_duration = 0 + (level - 1) * 15
+    level_duration = 90 + (level - 1) * 15
     enemy_speed = 0.70 + level * 0.08
     enemy_hp = 2 + ((level - 1) // 2)
     # Новые типы врагов открываются постепенно.
