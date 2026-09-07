@@ -13,7 +13,7 @@ USER_ID = "demo-user"
 
 # Режим разработки шутера: попытки не ограничены, можно запускать любой уровень.
 # Для релиза достаточно поставить False.
-SHOOTER_DEV_MODE = True
+SHOOTER_DEV_MODE = False
 
 st.set_page_config(page_title="Путь дыхания", page_icon="🫁", layout="wide")
 
@@ -441,40 +441,6 @@ def shooter_game_html(level, game_token):
         width: 100%;
         max-width: 900px;
         margin: 0 auto;
-        touch-action: none;
-    }}
-
-    #fullscreenBtn {{
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 10;
-        border: 0;
-        border-radius: 12px;
-        padding: 9px 11px;
-        background: rgba(255,255,255,.82);
-        color: #26332c;
-        font-size: 18px;
-        font-weight: 700;
-        cursor: pointer;
-        touch-action: manipulation;
-    }}
-
-    #game:fullscreen {{
-        width: 100vw;
-        height: 100vh;
-        max-width: none;
-        margin: 0;
-        background: #dfe9df;
-    }}
-
-    #game:fullscreen canvas {{
-        width: 100vw;
-        height: 100vh;
-        max-width: none;
-        border-radius: 0;
-        border: 0;
-        object-fit: contain;
     }}
 
     canvas {{
@@ -605,7 +571,6 @@ def shooter_game_html(level, game_token):
 
 <div id="game">
     <canvas id="canvas" width="900" height="600" tabindex="0"></canvas>
-    <button id="fullscreenBtn" type="button" aria-label="На весь экран">⛶</button>
 
     <div id="mobileControls">
         <div id="joystick"><div id="joystickKnob"></div></div>
@@ -635,36 +600,6 @@ const ctx = canvas.getContext("2d");
 
 const W = canvas.width;
 const H = canvas.height;
-const gameEl = document.getElementById("game");
-const fullscreenBtn = document.getElementById("fullscreenBtn");
-
-function updateFullscreenButton() {{
-    fullscreenBtn.textContent = document.fullscreenElement === gameEl ? "⛶" : "⛶";
-}}
-
-async function toggleFullscreen() {{
-    try {{
-        if (document.fullscreenElement === gameEl) {{
-            await document.exitFullscreen();
-        }} else if (gameEl.requestFullscreen) {{
-            await gameEl.requestFullscreen();
-            if (screen.orientation && screen.orientation.lock) {{
-                try {{ await screen.orientation.lock("landscape"); }} catch (_) {{}}
-            }}
-        }} else if (gameEl.webkitRequestFullscreen) {{
-            gameEl.webkitRequestFullscreen();
-        }}
-    }} catch (err) {{
-        // Fullscreen may be unavailable in some mobile browsers.
-    }}
-    setTimeout(recalculateGameLayout, 100);
-}}
-
-fullscreenBtn.addEventListener("click", toggleFullscreen);
-document.addEventListener("fullscreenchange", function() {{
-    updateFullscreenButton();
-    setTimeout(recalculateGameLayout, 80);
-}});
 
 const LEVEL = {level};
 const GAME_TOKEN = {int(game_token)};
@@ -687,6 +622,7 @@ let victory = false;
 let boss = null;
 let bossSpawned = false;
 let lastShot = 0;
+let kills = 0;
 let startTime = Date.now();
 let lastSpawn = Date.now();
 let elapsedSeconds = 0;
@@ -702,12 +638,14 @@ const player = {{
 const mouse = {{
     x: W / 2,
     y: H / 2,
-    down: false,
-    pointerId: null
+    down: false
 }};
 
 // ---------- Управление ----------
-function focusGame() {{ canvas.focus(); }}
+
+function focusGame() {{
+    canvas.focus();
+}}
 
 const controlKeys = new Set([
     "KeyW", "KeyA", "KeyS", "KeyD",
@@ -736,19 +674,18 @@ document.addEventListener("keyup", function(e) {{
 }});
 window.addEventListener("blur", function() {{
     mouse.down = false;
-    mouse.pointerId = null;
     keys = {{}};
-    resetTouchState();
+    joystick.active = false;
+    joystick.x = 0;
+    joystick.y = 0;
+    resetJoystickVisual();
 }});
 
-function pointerToWorld(e) {{
+canvas.addEventListener("mousemove", function(e) {{
     const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
     mouse.x = (e.clientX - rect.left) * W / rect.width;
     mouse.y = (e.clientY - rect.top) * H / rect.height;
-}}
-
-canvas.addEventListener("mousemove", function(e) {{ pointerToWorld(e); }});
+}});
 
 // ---------- Мобильное управление ----------
 const joystick = {{ active:false, pointerId:null, x:0, y:0 }};
@@ -803,68 +740,30 @@ joystickEl.addEventListener("pointercancel", releaseJoystick);
 joystickEl.addEventListener("lostpointercapture", function() {{ releaseJoystick(); }});
 
 function setAimFromPointer(e) {{
-    pointerToWorld(e);
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * W / rect.width;
+    mouse.y = (e.clientY - rect.top) * H / rect.height;
     mouse.down = true;
-    mouse.pointerId = e.pointerId;
 }}
 aimPad.addEventListener("pointerdown", function(e) {{
     e.preventDefault(); e.stopPropagation();
-    mouse.pointerId = e.pointerId;
-    try {{ aimPad.setPointerCapture(e.pointerId); }} catch (_) {{}}
+    aimPad.setPointerCapture(e.pointerId);
     setAimFromPointer(e);
 }});
 aimPad.addEventListener("pointermove", function(e) {{
-    if (mouse.pointerId === e.pointerId) {{
+    if (e.pressure > 0 || e.buttons) {{
         e.preventDefault();
         setAimFromPointer(e);
     }}
 }});
-function releaseAim(e) {{
-    if (!e || mouse.pointerId === e.pointerId) {{
-        mouse.down = false;
-        mouse.pointerId = null;
-    }}
-}}
+function releaseAim() {{ mouse.down = false; }}
 aimPad.addEventListener("pointerup", releaseAim);
 aimPad.addEventListener("pointercancel", releaseAim);
-aimPad.addEventListener("lostpointercapture", function(e) {{
-    // Do not cancel another pointer after a rotation/multi-touch event.
-    if (mouse.pointerId === e.pointerId) releaseAim(e);
-}});
+aimPad.addEventListener("lostpointercapture", releaseAim);
 
-function resetTouchState() {{
-    mouse.down = false;
-    mouse.pointerId = null;
-    joystick.active = false;
-    joystick.pointerId = null;
-    joystick.x = 0;
-    joystick.y = 0;
-    resetJoystickVisual();
-}}
-
-function recalculateGameLayout() {{
-    // Canvas remains a 3:2 logical battlefield, but always recalculates its
-    // visible size after rotation/fullscreen so touch coordinates stay correct.
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width && rect.height) {{
-        pointerToWorld({{clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2}});
-    }}
-}}
-
-window.addEventListener("resize", function() {{
-    // Do not destroy active controls on a normal resize. Rotation itself
-    // cancels the old browser pointers; new touches work immediately.
-    setTimeout(recalculateGameLayout, 50);
-    setTimeout(recalculateGameLayout, 300);
-}});
-window.addEventListener("orientationchange", function() {{
-    resetTouchState();
-    setTimeout(recalculateGameLayout, 100);
-    setTimeout(recalculateGameLayout, 500);
-}});
-
-// Important: don't listen for document-level touchend here. With two fingers,
-// releasing the joystick must NOT cancel the shooting finger.
+document.addEventListener("touchmove", function(e) {{
+    if (joystick.active) e.preventDefault();
+}}, {{ passive:false }});
 
 // ---------- Враги ----------
 
@@ -1205,8 +1104,24 @@ function update() {{
 
                 showMessage(
                     "🏆 Уровень пройден!",
-                    "Мини-босс побеждён. Нажми «Забрать награду» под игрой."
+                    "Уровень выполнен. Открываю получение награды..."
                 );
+
+                // Передаём факт победы обратно в Streamlit-страницу.
+                // Токен создаётся Python при старте конкретного прохождения,
+                // поэтому кнопка награды не может быть активна просто после проигрыша.
+                setTimeout(() => {{
+                    try {{
+                        const url = new URL(window.top.location.href);
+                        url.searchParams.set("shooter_complete", String(GAME_TOKEN));
+                        url.searchParams.set("shooter_level_complete", String(LEVEL));
+                        window.top.location.href = url.toString();
+                    }} catch (err) {{
+                        // Если браузер не разрешает навигацию из iframe,
+                        // оставляем сообщение — серверная кнопка всё равно
+                        // не будет доступна без подтверждения победы.
+                    }}
+                }}, 700);
             }}
         }}
     }}
@@ -1527,6 +1442,48 @@ loop();
 </html>
 """
 
+def process_shooter_completion():
+    """Подтверждает победу, пришедшую из игрового iframe.
+
+    Награда не выдаётся по самому факту нахождения на странице уровня:
+    сервер принимает завершение только для активного прохождения с тем же
+    одноразовым game_token и номером уровня.
+    """
+    try:
+        complete_token = st.query_params.get("shooter_complete")
+        complete_level = st.query_params.get("shooter_level_complete")
+
+        if not complete_token or not complete_level:
+            return False
+
+        expected_token = st.session_state.get("shooter_game_token")
+        active_level = int(st.session_state.get("shooter_level", 0))
+
+        if (
+            expected_token is not None
+            and str(complete_token) == str(expected_token)
+            and int(complete_level) == active_level
+            and st.session_state.get("shooter_running", False)
+        ):
+            st.session_state.shooter_finished = True
+            st.session_state.shooter_running = False
+            return True
+    except (TypeError, ValueError):
+        pass
+    finally:
+        # Убираем параметры из адресной строки, чтобы победа не
+        # подтверждалась повторно после обновления страницы.
+        try:
+            if "shooter_complete" in st.query_params:
+                del st.query_params["shooter_complete"]
+            if "shooter_level_complete" in st.query_params:
+                del st.query_params["shooter_level_complete"]
+        except Exception:
+            pass
+
+    return False
+
+
 def shooter_page():
 
     state = get_shooter_state()
@@ -1596,8 +1553,66 @@ def shooter_page():
         unsafe_allow_html=True
     )
 
+    # Если iframe сообщил о победе, переводим прохождение в состояние
+    # "уровень выполнен". Только из этого состояния показываем кнопку награды.
+    process_shooter_completion()
+
+    finished = st.session_state.get("shooter_finished", False)
     running = st.session_state.get("shooter_running", False)
 
+    # --------------------------------------------------------
+    # Уровень уже выполнен — сначала только награда.
+    # --------------------------------------------------------
+    if finished:
+        st.success(
+            f"🏆 Уровень {current_level} выполнен! "
+            "Теперь можно забрать награду."
+        )
+
+        st.info(
+            "Награда доступна только после победы над мини-боссом."
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button(
+                "🏆 Забрать награду",
+                type="primary",
+                use_container_width=True
+            ):
+                reward = give_shooter_level_reward(current_level)
+
+                st.session_state.shooter_reward = reward
+                st.session_state.shooter_finished = False
+                st.session_state.shooter_running = False
+
+                if current_level < 10:
+                    st.session_state.shooter_level = current_level + 1
+                else:
+                    st.session_state.shooter_level = 10
+
+                st.success(
+                    f"Уровень {current_level} завершён! "
+                    f"+{reward} 🪙"
+                )
+                st.rerun()
+
+        with col2:
+            if st.button(
+                "🚪 Выйти",
+                use_container_width=True
+            ):
+                # Выход после победы не выдаёт награду автоматически.
+                # Но подтверждённое выполнение сохраняется до получения награды.
+                st.session_state.shooter_finished = False
+                st.rerun()
+
+        return
+
+    # --------------------------------------------------------
+    # Уровень ещё не выполнен.
+    # --------------------------------------------------------
     if not running:
 
         if SHOOTER_DEV_MODE:
@@ -1632,7 +1647,7 @@ def shooter_page():
         return
 
     # --------------------------------------------------------
-    # Running game
+    # Running game — награда здесь отсутствует.
     # --------------------------------------------------------
 
     token = st.session_state.get(
@@ -1647,42 +1662,15 @@ def shooter_page():
     )
 
     st.warning(
-        "После полной победы над всеми противниками нажми "
-        "«Забрать награду» ниже."
+        "Награда появится только после полной победы над мини-боссом."
     )
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button(
-            "🏆 Я прошёл уровень — забрать награду",
-            type="primary",
-            use_container_width=True
-        ):
-            reward = give_shooter_level_reward(current_level)
-
-            st.session_state.shooter_reward = reward
-            st.session_state.shooter_running = False
-
-            if current_level < 10:
-                st.session_state.shooter_level = current_level + 1
-            else:
-                st.session_state.shooter_level = 10
-
-            st.success(
-                f"Уровень {current_level} завершён! "
-                f"+{reward} 🪙"
-            )
-
-            st.rerun()
-
-    with col2:
-        if st.button(
-            "🚪 Выйти из игры",
-            use_container_width=True
-        ):
-            st.session_state.shooter_running = False
-            st.rerun()
+    if st.button(
+        "🚪 Выйти из игры",
+        use_container_width=True
+    ):
+        st.session_state.shooter_running = False
+        st.rerun()
 
     reward = st.session_state.get("shooter_reward", 0)
 
@@ -2001,57 +1989,21 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 u=get_user()
-
-# На мобильном закрываем именно drawer после нажатия пункта навигации.
-# Флаг хранится в sessionStorage, поэтому переживает Streamlit rerun.
 st.markdown("""<script>
 (function() {
-  const w = window.parent;
-  const d = w.document;
-  if (w.__copdSidebarWatcher) return;
-  w.__copdSidebarWatcher = true;
-
-  function isMobile() { return w.innerWidth <= 700; }
-  function closeSidebar() {
-    if (!isMobile()) return;
-    const sidebar = d.querySelector('[data-testid=\"stSidebar\"]');
-    if (!sidebar) return;
-    const buttons = sidebar.querySelectorAll('button');
-    for (const b of buttons) {
-      const label = ((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '')).toLowerCase();
-      if (label.includes('close') || label.includes('закры') || b.getAttribute('data-testid') === 'stSidebarCollapseButton') {
-        b.click();
-        return;
-      }
+    if (window.innerWidth > 700) return;
+    function closeSidebar() {
+        try {
+            const doc = window.parent.document;
+            const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            const btn = sidebar.querySelector('[data-testid="stSidebarCollapseButton"]') ||
+                        sidebar.querySelector('button[aria-label*="Close"]');
+            if (btn) btn.click();
+        } catch (e) {}
     }
-  }
-
-  d.addEventListener('click', function(e) {
-    if (!isMobile()) return;
-    const sidebar = e.target.closest('[data-testid=\"stSidebar\"]');
-    if (!sidebar) return;
-    const button = e.target.closest('button');
-    if (!button) return;
-    const testid = button.getAttribute('data-testid') || '';
-    if (testid === 'stSidebarCollapseButton') return;
-    try { w.sessionStorage.setItem('copdCloseSidebar','1'); } catch (_) {}
-    // Run before Streamlit rerender and again after it.
-    closeSidebar();
-    requestAnimationFrame(closeSidebar);
-    setTimeout(closeSidebar, 50);
-    setTimeout(closeSidebar, 250);
-  }, true);
-
-  const observer = new MutationObserver(function() {
-    try {
-      if (w.sessionStorage.getItem('copdCloseSidebar') === '1') {
-        closeSidebar();
-        w.sessionStorage.removeItem('copdCloseSidebar');
-      }
-    } catch (_) {}
-  });
-  observer.observe(d.body, {subtree:true, childList:true});
-  w.__copdSidebarObserver = observer;
+    setTimeout(closeSidebar, 100);
+    setTimeout(closeSidebar, 400);
 })();
 </script>""", unsafe_allow_html=True)
 
