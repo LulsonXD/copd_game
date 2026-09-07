@@ -384,7 +384,8 @@ def reset_shooter_run():
         "shooter_started",
         "shooter_finished",
         "shooter_reward",
-        "shooter_game_token"
+        "shooter_game_token",
+        "shooter_boss_defeated",
     ]:
         st.session_state.pop(key, None)
 
@@ -399,6 +400,9 @@ def start_shooter_level(level):
     st.session_state.shooter_started = True
     st.session_state.shooter_finished = False
     st.session_state.shooter_reward = 0
+    # Сбрасываем флаг победы от предыдущего запуска, иначе кнопка
+    # "Забрать награду" могла бы появиться раньше времени на новом уровне.
+    st.session_state.shooter_boss_defeated = False
     st.session_state.shooter_game_token = int(time.time() * 1000)
 
     return True
@@ -409,7 +413,7 @@ def shooter_game_html(level, game_token):
 
     # Каждый уровень длится несколько минут. С ростом уровня увеличивается время,
     # скорость врагов и их запас здоровья.
-    level_duration = 90 + (level - 1) * 15
+    level_duration = 0 + (level - 1) * 15
     enemy_speed = 0.70 + level * 0.08
     enemy_hp = 2 + ((level - 1) // 2)
     # Новые типы врагов открываются постепенно.
@@ -542,6 +546,40 @@ def shooter_game_html(level, game_token):
         z-index: 3;
     }}
 
+    #skills {{
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 12px;
+        display: flex;
+        gap: 8px;
+        z-index: 6;
+        pointer-events: auto;
+    }}
+    .skillBtn {{
+        min-width: 92px;
+        padding: 8px 10px;
+        border: 1px solid rgba(255,255,255,.55);
+        border-radius: 12px;
+        background: rgba(38,51,44,.78);
+        color: white;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+        touch-action: manipulation;
+    }}
+    .skillBtn.ready {{
+        background: rgba(53,91,67,.92);
+    }}
+    .skillBtn.cooldown {{
+        opacity: .55;
+        cursor: default;
+    }}
+    @media (max-width: 700px) {{
+        #skills {{ bottom: 10px; gap: 5px; }}
+        .skillBtn {{ min-width: 82px; padding: 9px 6px; font-size: 10px; }}
+    }}
+
     #message {{
         position: absolute;
         inset: 0;
@@ -578,6 +616,12 @@ def shooter_game_html(level, game_token):
         <div id="aimHint">Веди пальцем → стрельба</div>
     </div>
 
+    <div id="skills">
+        <button id="skillBreath" class="skillBtn ready">🫁 Дыхание с усилием<br><span>Q · готово</span></button>
+        <button id="skillCalm" class="skillBtn ready">🌬️ Спокойный ритм<br><span>E · готово</span></button>
+        <button id="skillPulse" class="skillBtn ready">🫁 Позиционное дренирование<br><span>R · готово</span></button>
+    </div>
+
     <div id="hud">
         <span>🎯 Уровень {level}/10</span>
         <span id="enemyCounter">Врагов: 0</span>
@@ -593,6 +637,8 @@ def shooter_game_html(level, game_token):
         <small id="messageText"></small>
     </div>
 </div>
+
+
 
 <script>
 const canvas = document.getElementById("canvas");
@@ -626,6 +672,95 @@ let kills = 0;
 let startTime = Date.now();
 let lastSpawn = Date.now();
 let elapsedSeconds = 0;
+let victorySignalSent = false;
+
+// ---------- Навыки ----------
+let skills = {{
+    breath: {{ cooldown: 0, duration: 0 }},
+    calm: {{ cooldown: 0, duration: 0 }},
+    pulse: {{ cooldown: 0 }}
+}};
+const SKILL_CD = 18000;
+const SKILL_BREATH_DURATION = 7000;
+const SKILL_CALM_DURATION = 6000;
+const SKILL_PULSE_CD = 22000;
+
+const skillBreathBtn = document.getElementById("skillBreath");
+const skillCalmBtn = document.getElementById("skillCalm");
+const skillPulseBtn = document.getElementById("skillPulse");
+
+function skillReady(skill) {{
+    const now = Date.now();
+    return !gameOver && (skill === "pulse"
+        ? now >= skills.pulse.cooldown
+        : now >= skills[skill].cooldown);
+}}
+
+function activateSkill(skill) {{
+    if (!skillReady(skill)) return;
+    const now = Date.now();
+
+    if (skill === "breath") {{
+        // Дыхательная гимнастика: временно ускоряет темп стрельбы.
+        skills.breath.duration = now + SKILL_BREATH_DURATION;
+        skills.breath.cooldown = now + SKILL_CD;
+    }} else if (skill === "calm") {{
+        // Спокойный ритм: временно замедляет противников.
+        skills.calm.duration = now + SKILL_CALM_DURATION;
+        skills.calm.cooldown = now + SKILL_CD;
+    }} else if (skill === "pulse") {{
+        // Активный цикл дыхания (ACBT): создаёт короткий импульс, отталкивающий ближайших противников.
+        const range = 230;
+        for (const enemy of enemies) {{
+            const dx = enemy.x - player.x;
+            const dy = enemy.y - player.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d < range) {{
+                enemy.x += dx / d * (70 * (1 - d / range));
+                enemy.y += dy / d * (70 * (1 - d / range));
+            }}
+        }}
+        if (boss) {{
+            const dx = boss.x - player.x;
+            const dy = boss.y - player.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d < range) {{
+                boss.x += dx / d * 35;
+                boss.y += dy / d * 35;
+            }}
+        }}
+        skills.pulse.cooldown = now + SKILL_PULSE_CD;
+    }}
+    updateSkillButtons();
+}}
+
+function updateSkillButtons() {{
+    const now = Date.now();
+    const defs = [
+        [skillBreathBtn, "breath", "Q", "🫁 Дыхание с усилием"],
+        [skillCalmBtn, "calm", "E", "🌬️ Спокойный ритм"],
+        [skillPulseBtn, "pulse", "R", "🫁 Позиционное дренирование"]
+    ];
+    for (const [btn, skill, key, label] of defs) {{
+        const cd = skill === "pulse" ? skills.pulse.cooldown : skills[skill].cooldown;
+        const remain = Math.max(0, cd - now);
+        const ready = remain <= 0 && !gameOver;
+        btn.classList.toggle("ready", ready);
+        btn.classList.toggle("cooldown", !ready);
+        btn.innerHTML = label + "<br><span>" + key + " · " +
+            (ready ? "готово" : Math.ceil(remain / 1000) + "с") + "</span>";
+    }}
+}}
+
+skillBreathBtn.addEventListener("pointerdown", function(e) {{ e.preventDefault(); activateSkill("breath"); }});
+skillCalmBtn.addEventListener("pointerdown", function(e) {{ e.preventDefault(); activateSkill("calm"); }});
+skillPulseBtn.addEventListener("pointerdown", function(e) {{ e.preventDefault(); activateSkill("pulse"); }});
+
+document.addEventListener("keydown", function(e) {{
+    if (e.code === "KeyQ") activateSkill("breath");
+    if (e.code === "KeyE") activateSkill("calm");
+    if (e.code === "KeyR") activateSkill("pulse");
+}});
 
 const player = {{
     x: W / 2,
@@ -852,8 +987,9 @@ for (let i = 0; i < Math.min(2, LEVEL); i++) {{
 function shoot() {{
     const now = Date.now();
 
-    // Медленная стрельба: один выстрел примерно раз в 0.38 секунды.
-    if (!mouse.down || now - lastShot < 380 || gameOver) {{
+    // Навык «Дыхательная гимнастика» временно ускоряет темп стрельбы.
+    const shotCooldown = now < skills.breath.duration ? 130 : 380;
+    if (!mouse.down || now - lastShot < shotCooldown || gameOver) {{
         return;
     }}
 
@@ -881,6 +1017,28 @@ function showMessage(title, text) {{
     document.getElementById("messageText").innerText = text;
 }}
 
+// Сообщаем родительской странице (Streamlit), что босс побеждён.
+// Основной способ — клик по скрытой Streamlit-кнопке с key="shooter_victory_confirm",
+// которая находится в родительском DOM. Это гарантирует нормальный st.rerun()
+// и обновление session_state, в отличие от одного лишь postMessage.
+function sendVictorySignal() {{
+    if (victorySignalSent) return;
+    victorySignalSent = true;
+
+    try {{
+        const btn = window.parent.document.querySelector(
+            ".st-key-shooter_victory_confirm button"
+        );
+        if (btn) {{
+            btn.click();
+        }} else {{
+            window.parent.postMessage("boss_defeated", "*");
+        }}
+    }} catch (e) {{
+        window.parent.postMessage("boss_defeated", "*");
+    }}
+}}
+
 function updateTimer() {{
     elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     const remaining = Math.max(0, LEVEL_DURATION - elapsedSeconds);
@@ -901,6 +1059,7 @@ function update() {{
     const now = Date.now();
 
     updateTimer();
+    updateSkillButtons();
     updateSpawning(now);
 
     if (keys["KeyW"] || keys["ArrowUp"]) {{
@@ -958,14 +1117,16 @@ function update() {{
         const dy = player.y - enemy.y;
         const dist = Math.hypot(dx, dy) || 1;
 
+        const speedFactor = Date.now() < skills.calm.duration ? 0.48 : 1.0;
+
         if (enemy.type === "burrower") {{
             enemy.burrowPhase += 0.06;
             if (enemy.burrowed && dist <= enemy.emergeDistance) enemy.burrowed = false;
-            if (!enemy.burrowed) {{ enemy.x += dx / dist * enemy.speed; enemy.y += dy / dist * enemy.speed; }}
-            else {{ enemy.x += dx / dist * enemy.speed * 0.55; enemy.y += dy / dist * enemy.speed * 0.55; }}
+            if (!enemy.burrowed) {{ enemy.x += dx / dist * enemy.speed * speedFactor; enemy.y += dy / dist * enemy.speed * speedFactor; }}
+            else {{ enemy.x += dx / dist * enemy.speed * 0.55 * speedFactor; enemy.y += dy / dist * enemy.speed * 0.55 * speedFactor; }}
         }} else {{
-            enemy.x += dx / dist * enemy.speed;
-            enemy.y += dy / dist * enemy.speed;
+            enemy.x += dx / dist * enemy.speed * speedFactor;
+            enemy.y += dy / dist * enemy.speed * speedFactor;
         }}
 
         if (enemy.type === "shooter" && dist < 420) {{
@@ -1104,24 +1265,10 @@ function update() {{
 
                 showMessage(
                     "🏆 Уровень пройден!",
-                    "Уровень выполнен. Открываю получение награды..."
+                    "Мини-босс побеждён. Нажми «Забрать награду» под игрой."
                 );
 
-                // Передаём факт победы обратно в Streamlit-страницу.
-                // Токен создаётся Python при старте конкретного прохождения,
-                // поэтому кнопка награды не может быть активна просто после проигрыша.
-                setTimeout(() => {{
-                    try {{
-                        const url = new URL(window.top.location.href);
-                        url.searchParams.set("shooter_complete", String(GAME_TOKEN));
-                        url.searchParams.set("shooter_level_complete", String(LEVEL));
-                        window.top.location.href = url.toString();
-                    }} catch (err) {{
-                        // Если браузер не разрешает навигацию из iframe,
-                        // оставляем сообщение — серверная кнопка всё равно
-                        // не будет доступна без подтверждения победы.
-                    }}
-                }}, 700);
+                sendVictorySignal();
             }}
         }}
     }}
@@ -1442,49 +1589,13 @@ loop();
 </html>
 """
 
-def process_shooter_completion():
-    """Подтверждает победу, пришедшую из игрового iframe.
-
-    Награда не выдаётся по самому факту нахождения на странице уровня:
-    сервер принимает завершение только для активного прохождения с тем же
-    одноразовым game_token и номером уровня.
-    """
-    try:
-        complete_token = st.query_params.get("shooter_complete")
-        complete_level = st.query_params.get("shooter_level_complete")
-
-        if not complete_token or not complete_level:
-            return False
-
-        expected_token = st.session_state.get("shooter_game_token")
-        active_level = int(st.session_state.get("shooter_level", 0))
-
-        if (
-            expected_token is not None
-            and str(complete_token) == str(expected_token)
-            and int(complete_level) == active_level
-            and st.session_state.get("shooter_running", False)
-        ):
-            st.session_state.shooter_finished = True
-            st.session_state.shooter_running = False
-            return True
-    except (TypeError, ValueError):
-        pass
-    finally:
-        # Убираем параметры из адресной строки, чтобы победа не
-        # подтверждалась повторно после обновления страницы.
-        try:
-            if "shooter_complete" in st.query_params:
-                del st.query_params["shooter_complete"]
-            if "shooter_level_complete" in st.query_params:
-                del st.query_params["shooter_level_complete"]
-        except Exception:
-            pass
-
-    return False
-
-
 def shooter_page():
+
+    # Оставлено на случай fallback-postMessage (см. sendVictorySignal в игре),
+    # но основной путь теперь — скрытая кнопка ниже.
+    if st.query_params.get("shooter_result") == "boss_defeated":
+        st.session_state.shooter_boss_defeated = True
+        st.query_params.clear()
 
     state = get_shooter_state()
 
@@ -1553,66 +1664,8 @@ def shooter_page():
         unsafe_allow_html=True
     )
 
-    # Если iframe сообщил о победе, переводим прохождение в состояние
-    # "уровень выполнен". Только из этого состояния показываем кнопку награды.
-    process_shooter_completion()
-
-    finished = st.session_state.get("shooter_finished", False)
     running = st.session_state.get("shooter_running", False)
 
-    # --------------------------------------------------------
-    # Уровень уже выполнен — сначала только награда.
-    # --------------------------------------------------------
-    if finished:
-        st.success(
-            f"🏆 Уровень {current_level} выполнен! "
-            "Теперь можно забрать награду."
-        )
-
-        st.info(
-            "Награда доступна только после победы над мини-боссом."
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button(
-                "🏆 Забрать награду",
-                type="primary",
-                use_container_width=True
-            ):
-                reward = give_shooter_level_reward(current_level)
-
-                st.session_state.shooter_reward = reward
-                st.session_state.shooter_finished = False
-                st.session_state.shooter_running = False
-
-                if current_level < 10:
-                    st.session_state.shooter_level = current_level + 1
-                else:
-                    st.session_state.shooter_level = 10
-
-                st.success(
-                    f"Уровень {current_level} завершён! "
-                    f"+{reward} 🪙"
-                )
-                st.rerun()
-
-        with col2:
-            if st.button(
-                "🚪 Выйти",
-                use_container_width=True
-            ):
-                # Выход после победы не выдаёт награду автоматически.
-                # Но подтверждённое выполнение сохраняется до получения награды.
-                st.session_state.shooter_finished = False
-                st.rerun()
-
-        return
-
-    # --------------------------------------------------------
-    # Уровень ещё не выполнен.
-    # --------------------------------------------------------
     if not running:
 
         if SHOOTER_DEV_MODE:
@@ -1623,8 +1676,7 @@ def shooter_page():
 
         elif state["attempts"] <= 0:
             st.warning(
-                "Попыток пока нет. Выполни обычное задание — "
-                "оно добавит одну попытку."
+                "Попыток пока нет. Выполняй миссии, и попытки будут начисляться"
             )
             return
 
@@ -1647,7 +1699,7 @@ def shooter_page():
         return
 
     # --------------------------------------------------------
-    # Running game — награда здесь отсутствует.
+    # Running game
     # --------------------------------------------------------
 
     token = st.session_state.get(
@@ -1661,16 +1713,73 @@ def shooter_page():
         scrolling=False
     )
 
+    # Скрытая кнопка-триггер: по ней кликает JS внутри игрового iframe,
+    # когда мини-босс побеждён (см. sendVictorySignal). Так мы получаем
+    # обычный, надёжный Streamlit rerun с обновлением session_state —
+    # без непредсказуемого postMessage/query_params.
+    st.markdown(
+        """
+        <style>
+        .st-key-shooter_victory_confirm {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    if st.button("victory-signal", key="shooter_victory_confirm"):
+        st.session_state.shooter_boss_defeated = True
+        st.rerun()
+
     st.warning(
-        "Награда появится только после полной победы над мини-боссом."
+        "После полной победы над всеми противниками нажми "
+        "«Забрать награду» ниже."
     )
 
-    if st.button(
-        "🚪 Выйти из игры",
-        use_container_width=True
-    ):
-        st.session_state.shooter_running = False
-        st.rerun()
+    col1, col2 = st.columns(2)
+
+    boss_defeated = st.session_state.get(
+        "shooter_boss_defeated",
+        False
+    )
+
+    with col1:
+        if boss_defeated:
+            if st.button(
+                "🏆 Я прошёл уровень — забрать награду",
+                type="primary",
+                use_container_width=True
+            ):
+                reward = give_shooter_level_reward(current_level)
+
+                st.session_state.shooter_reward = reward
+                st.session_state.shooter_running = False
+                st.session_state.shooter_boss_defeated = False
+
+                if current_level < 10:
+                    st.session_state.shooter_level = current_level + 1
+                else:
+                    st.session_state.shooter_level = 10
+
+                st.success(
+                    f"Уровень {current_level} завершён! "
+                    f"+{reward} 🪙"
+                )
+                add_shooter_attempts(1)
+                st.rerun()
+
+    with col2:
+        if st.button(
+            "🚪 Выйти из игры",
+            use_container_width=True
+        ):
+            st.session_state.shooter_running = False
+            st.rerun()
 
     reward = st.session_state.get("shooter_reward", 0)
 
