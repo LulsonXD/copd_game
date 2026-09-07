@@ -441,6 +441,40 @@ def shooter_game_html(level, game_token):
         width: 100%;
         max-width: 900px;
         margin: 0 auto;
+        touch-action: none;
+    }}
+
+    #fullscreenBtn {{
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+        border: 0;
+        border-radius: 12px;
+        padding: 9px 11px;
+        background: rgba(255,255,255,.82);
+        color: #26332c;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        touch-action: manipulation;
+    }}
+
+    #game:fullscreen {{
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        margin: 0;
+        background: #dfe9df;
+    }}
+
+    #game:fullscreen canvas {{
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        border-radius: 0;
+        border: 0;
+        object-fit: contain;
     }}
 
     canvas {{
@@ -571,6 +605,7 @@ def shooter_game_html(level, game_token):
 
 <div id="game">
     <canvas id="canvas" width="900" height="600" tabindex="0"></canvas>
+    <button id="fullscreenBtn" type="button" aria-label="На весь экран">⛶</button>
 
     <div id="mobileControls">
         <div id="joystick"><div id="joystickKnob"></div></div>
@@ -600,6 +635,33 @@ const ctx = canvas.getContext("2d");
 
 const W = canvas.width;
 const H = canvas.height;
+const gameEl = document.getElementById("game");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+function updateFullscreenButton() {{
+    fullscreenBtn.textContent = document.fullscreenElement === gameEl ? "⛶" : "⛶";
+}}
+
+async function toggleFullscreen() {{
+    try {{
+        if (document.fullscreenElement === gameEl) {{
+            await document.exitFullscreen();
+        }} else if (gameEl.requestFullscreen) {{
+            await gameEl.requestFullscreen();
+        }} else if (gameEl.webkitRequestFullscreen) {{
+            gameEl.webkitRequestFullscreen();
+        }}
+    }} catch (err) {{
+        // Fullscreen can be blocked by the browser/iframe; the game remains playable.
+    }}
+    setTimeout(resetTouchState, 80);
+}}
+
+fullscreenBtn.addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", function() {{
+    updateFullscreenButton();
+    setTimeout(resetTouchState, 100);
+}});
 
 const LEVEL = {level};
 const GAME_TOKEN = {int(game_token)};
@@ -751,19 +813,53 @@ aimPad.addEventListener("pointerdown", function(e) {{
     setAimFromPointer(e);
 }});
 aimPad.addEventListener("pointermove", function(e) {{
-    if (e.pressure > 0 || e.buttons) {{
+    if (e.pointerType === "touch" || e.pressure > 0 || e.buttons) {{
         e.preventDefault();
         setAimFromPointer(e);
     }}
 }});
-function releaseAim() {{ mouse.down = false; }}
+function releaseAim(e) {{
+    mouse.down = false;
+    if (e && e.pointerId != null) {{
+        try {{ aimPad.releasePointerCapture(e.pointerId); }} catch (_) {{}}
+    }}
+}}
 aimPad.addEventListener("pointerup", releaseAim);
 aimPad.addEventListener("pointercancel", releaseAim);
-aimPad.addEventListener("lostpointercapture", releaseAim);
+aimPad.addEventListener("pointerleave", function(e) {{
+    // Do not stop shooting while the finger is still captured.
+}});
+aimPad.addEventListener("lostpointercapture", function() {{ mouse.down = false; }});
+
+function resetTouchState() {{
+    mouse.down = false;
+    joystick.active = false;
+    joystick.pointerId = null;
+    joystick.x = 0;
+    joystick.y = 0;
+    resetJoystickVisual();
+}}
+
+window.addEventListener("resize", function() {{
+    resetTouchState();
+    setTimeout(function() {{
+        // Force the browser to recalculate the iframe/canvas touch geometry after rotation.
+        canvas.getBoundingClientRect();
+    }}, 100);
+}});
+window.addEventListener("orientationchange", function() {{
+    resetTouchState();
+    setTimeout(function() {{
+        canvas.getBoundingClientRect();
+        focusGame();
+    }}, 250);
+}});
 
 document.addEventListener("touchmove", function(e) {{
-    if (joystick.active) e.preventDefault();
+    if (joystick.active || mouse.down) e.preventDefault();
 }}, {{ passive:false }});
+document.addEventListener("touchend", resetTouchState, {{ passive:true }});
+document.addEventListener("touchcancel", resetTouchState, {{ passive:true }});
 
 // ---------- Враги ----------
 
@@ -1903,18 +1999,40 @@ u=get_user()
 st.markdown("""<script>
 (function() {
     if (window.innerWidth > 700) return;
+    const doc = window.parent.document;
+
     function closeSidebar() {
         try {
-            const doc = window.parent.document;
             const sidebar = doc.querySelector('[data-testid="stSidebar"]');
             if (!sidebar) return;
             const btn = sidebar.querySelector('[data-testid="stSidebarCollapseButton"]') ||
-                        sidebar.querySelector('button[aria-label*="Close"]');
+                        sidebar.querySelector('button[aria-label*="Close"]') ||
+                        sidebar.querySelector('button[aria-label*="закры"]');
             if (btn) btn.click();
         } catch (e) {}
     }
-    setTimeout(closeSidebar, 100);
-    setTimeout(closeSidebar, 400);
+
+    // Navigation buttons are recreated by Streamlit after every rerun, so use
+    // event delegation instead of binding once to the old buttons.
+    if (!window.__copdSidebarCloseInstalled) {
+        window.__copdSidebarCloseInstalled = true;
+        doc.addEventListener('click', function(e) {
+            if (window.innerWidth > 700) return;
+            const sidebar = e.target.closest('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            const button = e.target.closest('button');
+            if (!button) return;
+            const text = (button.innerText || '').trim();
+            const navNames = ['Главная','Миссии','Шутер','Симптомы','Знания о ХОБЛ','Прогресс','Персонаж','Магазин'];
+            if (navNames.includes(text)) {
+                setTimeout(closeSidebar, 50);
+                setTimeout(closeSidebar, 250);
+                setTimeout(closeSidebar, 700);
+            }
+        }, true);
+    }
+
+    setTimeout(closeSidebar, 150);
 })();
 </script>""", unsafe_allow_html=True)
 
