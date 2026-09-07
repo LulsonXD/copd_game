@@ -453,6 +453,65 @@ def shooter_game_html(level, game_token):
         cursor: crosshair;
         box-sizing: border-box;
         outline: none;
+         touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+    }}
+
+    #mobileControls {{
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+        touch-action: none;
+    }}
+    #joystick {{
+        position: absolute;
+        left: 18px; bottom: 18px;
+        width: 118px; height: 118px;
+        border-radius: 50%;
+        background: rgba(255,255,255,.18);
+        border: 2px solid rgba(255,255,255,.55);
+        box-sizing: border-box;
+        pointer-events: auto;
+        touch-action: none;
+    }}
+    #joystickKnob {{
+        position: absolute;
+        left: 50%; top: 50%;
+        width: 48px; height: 48px;
+        margin-left: -24px; margin-top: -24px;
+        border-radius: 50%;
+        background: rgba(70,100,80,.72);
+        border: 2px solid rgba(255,255,255,.8);
+        box-sizing: border-box;
+        pointer-events: none;
+    }}
+    #aimPad {{
+        position: absolute;
+        right: 0; bottom: 0;
+        width: 54%; height: 58%;
+        pointer-events: auto;
+        touch-action: none;
+    }}
+    #aimHint {{
+        position: absolute;
+        right: 22px; bottom: 24px;
+        padding: 7px 10px;
+        border-radius: 12px;
+        background: rgba(255,255,255,.18);
+        color: rgba(38,51,44,.72);
+        font-size: 12px;
+        font-weight: 700;
+        pointer-events: none;
+    }}
+    @media (max-width: 700px) {{
+        #mobileControls {{ display: block; }}
+        #hud, #hudBottom {{
+            left: 9px; right: 9px; font-size: 12px;
+        }}
+        #message {{ font-size: 22px; }}
     }}
 
     #hud {{
@@ -512,6 +571,12 @@ def shooter_game_html(level, game_token):
 
 <div id="game">
     <canvas id="canvas" width="900" height="600" tabindex="0"></canvas>
+
+    <div id="mobileControls">
+        <div id="joystick"><div id="joystickKnob"></div></div>
+        <div id="aimPad"></div>
+        <div id="aimHint">Веди пальцем → стрельба</div>
+    </div>
 
     <div id="hud">
         <span>🎯 Уровень {level}/10</span>
@@ -582,37 +647,38 @@ function focusGame() {{
     canvas.focus();
 }}
 
+const controlKeys = new Set([
+    "KeyW", "KeyA", "KeyS", "KeyD",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"
+]);
+
 canvas.addEventListener("mousedown", function(e) {{
     focusGame();
     mouse.down = true;
 }});
+canvas.addEventListener("mouseup", function() {{ mouse.down = false; }});
+canvas.addEventListener("mouseleave", function() {{ mouse.down = false; }});
 
-canvas.addEventListener("mouseup", function() {{
-    mouse.down = false;
-}});
-
-canvas.addEventListener("mouseleave", function() {{
-    mouse.down = false;
-}});
-
-window.addEventListener("blur", function() {{
-    mouse.down = false;
-    keys = {{}};
-}});
-
-window.addEventListener("keydown", function(e) {{
-    const key = e.key.toLowerCase();
-
-    if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"," "].includes(key)) {{
+document.addEventListener("keydown", function(e) {{
+    if (controlKeys.has(e.code)) {{
         e.preventDefault();
-        keys[key] = true;
+        keys[e.code] = true;
         focusGame();
     }}
 }});
-
-window.addEventListener("keyup", function(e) {{
-    const key = e.key.toLowerCase();
-    keys[key] = false;
+document.addEventListener("keyup", function(e) {{
+    if (controlKeys.has(e.code)) {{
+        e.preventDefault();
+        keys[e.code] = false;
+    }}
+}});
+window.addEventListener("blur", function() {{
+    mouse.down = false;
+    keys = {{}};
+    joystick.active = false;
+    joystick.x = 0;
+    joystick.y = 0;
+    resetJoystickVisual();
 }});
 
 canvas.addEventListener("mousemove", function(e) {{
@@ -620,6 +686,84 @@ canvas.addEventListener("mousemove", function(e) {{
     mouse.x = (e.clientX - rect.left) * W / rect.width;
     mouse.y = (e.clientY - rect.top) * H / rect.height;
 }});
+
+// ---------- Мобильное управление ----------
+const joystick = {{ active:false, pointerId:null, x:0, y:0 }};
+const joystickEl = document.getElementById("joystick");
+const joystickKnob = document.getElementById("joystickKnob");
+const aimPad = document.getElementById("aimPad");
+
+function resetJoystickVisual() {{
+    joystickKnob.style.transform = "translate(0px, 0px)";
+}}
+
+function updateJoystick(e) {{
+    const rect = joystickEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxRadius = rect.width * 0.34;
+    let dx = e.clientX - cx;
+    let dy = e.clientY - cy;
+    const distance = Math.hypot(dx, dy) || 1;
+    if (distance > maxRadius) {{
+        dx = dx / distance * maxRadius;
+        dy = dy / distance * maxRadius;
+    }}
+    joystick.x = dx / maxRadius;
+    joystick.y = dy / maxRadius;
+    joystickKnob.style.transform = `translate(${{dx}}px, ${{dy}}px)`;
+}}
+
+joystickEl.addEventListener("pointerdown", function(e) {{
+    e.preventDefault(); e.stopPropagation();
+    joystick.active = true;
+    joystick.pointerId = e.pointerId;
+    joystickEl.setPointerCapture(e.pointerId);
+    updateJoystick(e);
+}});
+joystickEl.addEventListener("pointermove", function(e) {{
+    if (joystick.active && e.pointerId === joystick.pointerId) {{
+        e.preventDefault();
+        updateJoystick(e);
+    }}
+}});
+function releaseJoystick(e) {{
+    if (joystick.active && (!e || e.pointerId === joystick.pointerId)) {{
+        joystick.active = false;
+        joystick.pointerId = null;
+        joystick.x = 0; joystick.y = 0;
+        resetJoystickVisual();
+    }}
+}}
+joystickEl.addEventListener("pointerup", releaseJoystick);
+joystickEl.addEventListener("pointercancel", releaseJoystick);
+joystickEl.addEventListener("lostpointercapture", function() {{ releaseJoystick(); }});
+
+function setAimFromPointer(e) {{
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * W / rect.width;
+    mouse.y = (e.clientY - rect.top) * H / rect.height;
+    mouse.down = true;
+}}
+aimPad.addEventListener("pointerdown", function(e) {{
+    e.preventDefault(); e.stopPropagation();
+    aimPad.setPointerCapture(e.pointerId);
+    setAimFromPointer(e);
+}});
+aimPad.addEventListener("pointermove", function(e) {{
+    if (e.pressure > 0 || e.buttons) {{
+        e.preventDefault();
+        setAimFromPointer(e);
+    }}
+}});
+function releaseAim() {{ mouse.down = false; }}
+aimPad.addEventListener("pointerup", releaseAim);
+aimPad.addEventListener("pointercancel", releaseAim);
+aimPad.addEventListener("lostpointercapture", releaseAim);
+
+document.addEventListener("touchmove", function(e) {{
+    if (joystick.active) e.preventDefault();
+}}, {{ passive:false }});
 
 // ---------- Враги ----------
 
@@ -759,20 +903,25 @@ function update() {{
     updateTimer();
     updateSpawning(now);
 
-    if (keys["w"] || keys["arrowup"]) {{
+    if (keys["KeyW"] || keys["ArrowUp"]) {{
         player.y -= player.speed;
     }}
 
-    if (keys["s"] || keys["arrowdown"]) {{
+    if (keys["KeyS"] || keys["ArrowDown"]) {{
         player.y += player.speed;
     }}
 
-    if (keys["a"] || keys["arrowleft"]) {{
+    if (keys["KeyA"] || keys["ArrowLeft"]) {{
         player.x -= player.speed;
     }}
 
-    if (keys["d"] || keys["arrowright"]) {{
+    if (keys["KeyD"] || keys["ArrowRight"]) {{
         player.x += player.speed;
+    }}
+
+    if (joystick.active) {{
+        player.x += joystick.x * player.speed;
+        player.y += joystick.y * player.speed;
     }}
 
     player.x = Math.max(player.radius, Math.min(W - player.radius, player.x));
@@ -1751,6 +1900,24 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 u=get_user()
+st.markdown("""<script>
+(function() {
+    if (window.innerWidth > 700) return;
+    function closeSidebar() {
+        try {
+            const doc = window.parent.document;
+            const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            const btn = sidebar.querySelector('[data-testid="stSidebarCollapseButton"]') ||
+                        sidebar.querySelector('button[aria-label*="Close"]');
+            if (btn) btn.click();
+        } catch (e) {}
+    }
+    setTimeout(closeSidebar, 100);
+    setTimeout(closeSidebar, 400);
+})();
+</script>""", unsafe_allow_html=True)
+
 st.sidebar.title("🫁 Путь дыхания")
 st.sidebar.caption("COPD self-management • Gamified Digital Health PoC")
 for nav in ["Главная","Миссии","Шутер","Симптомы","Знания о ХОБЛ","Прогресс","Персонаж","Магазин"]:
