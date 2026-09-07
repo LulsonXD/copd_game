@@ -2145,7 +2145,12 @@ def workout_component_html(module_key, steps_json, mission_type):
     .timer {{ font-size: 4.5rem; font-weight: 800; color: #2c5e4f; margin: 10px 0; font-variant-numeric: tabular-nums; }}
     .step-title {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }}
     .instruction {{ font-size: 1.15rem; line-height: 1.5; color: #4a5852; background: #fff; padding: 20px; border-radius: 16px; border: 1px solid #dce7df; min-height: 80px; display: flex; align-items: center; justify-content: center; }}
-    
+    .hero-text {{ font-size: 1.1rem; line-height: 1.6; color: #4a5852; }}
+    .hud-sub {{ font-size: 0.75rem; color: #68726e; margin-top: 4px; line-height: 1.2; }}
+    .mission-desc-detailed {{ font-size: 0.9rem; color: #4a5852; margin-top: 6px; line-height: 1.4; background: #f8faf9; padding: 8px 12px; border-radius: 8px; border-left: 3px solid #8ED1C2; }}
+    .section-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }}
+    .section-header h3 {{ margin: 0; }}
+    .info-icon {{ font-size: 1.2rem; cursor: help; }}
     /* Анимации */
     .anim-box {{ width: 160px; height: 160px; margin: 20px auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }}
     
@@ -2314,7 +2319,7 @@ st.markdown("""<script>
 
 st.sidebar.title("🫁 Путь дыхания")
 st.sidebar.caption("COPD self-management • Gamified Digital Health PoC")
-for nav in ["Главная","Миссии","Шутер","Симптомы","Знания о ХОБЛ","Прогресс","Персонаж","Магазин"]:
+for nav in ["Главная","Шутер","Симптомы","Знания о ХОБЛ","Прогресс","Персонаж","Магазин"]:
     if st.sidebar.button(nav,key="nav_"+nav,use_container_width=True): go(nav); st.rerun()
 st.sidebar.divider()
 st.sidebar.metric("Уровень",u["level"])
@@ -2331,48 +2336,39 @@ page=st.session_state.page
 # Home
 # -----------------------------
 if page == "Главная":
-    # --- HERO SECTION ---
+    # --- 1. HERO SECTION: Ценностное предложение ---
     col1, col2 = st.columns([1.2, 0.8], gap="large")
     
     with col1:
         st.markdown("""
         <div style="padding-top: 10px;">
             <span class="pill">COPD • Gamified Digital Health</span>
-            <h1 style="font-size: 2.8rem; margin-top: 10px; margin-bottom: 15px; color: #2c5e4f;">Путь дыхания</h1>
-            <p style="font-size: 1.15rem; color: #4a5852; line-height: 1.6; margin-bottom: 25px;">
-                Преврати ежедневную лёгочную реабилитацию в увлекательное приключение. 
-                Выполняй задания по здоровью, зарабатывай ресурсы и <b>защищай свои лёгкие</b> в эпической мини-игре!
+            <h1 style="font-size: 2.6rem; margin-top: 10px; margin-bottom: 15px; color: #2c5e4f;">Путь дыхания</h1>
+            <p class="hero-text">
+                Это не просто приложение, а ваш ежедневный помощник в управлении ХОБЛ. 
+                Мы превратили рутинную лёгочную реабилитацию в увлекательное приключение. 
+                Выполняйте короткие, научно обоснованные задания по здоровью, зарабатывайте ресурсы 
+                и используйте их, чтобы <b>защищать свои лёгкие</b> в мини-игре!
             </p>
-            <div style="display: flex; gap: 12px;">
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
         """, unsafe_allow_html=True)
         
-        if st.button("🎯 Начать миссии сегодня", type="primary", use_container_width=True):
-            go("Миссии")
-            st.rerun()
-            
-        if st.button("🎮 Играть в «Защиту лёгких»", type="secondary", use_container_width=True):
+        if st.button("🎮 Играть в «Защиту лёгких»", type="primary", use_container_width=True):
             go("Шутер")
             st.rerun()
             
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col2:
-        # Встроенная SVG-графика: Щит, защищающий лёгкие + игровая символика
         st.markdown("""
         <div class="hero-graphic">
         <svg viewBox="0 0 300 280" width="100%" xmlns="http://www.w3.org/2000/svg">
-            <!-- Фоновый круг -->
             <circle cx="150" cy="140" r="120" fill="#e8f4f0" />
-            <!-- Щит -->
             <path d="M150 40 L230 80 L230 150 C230 200 150 250 150 250 C150 250 70 200 70 150 L70 80 Z" fill="#ffffff" stroke="#4f8f7b" stroke-width="4"/>
-            <!-- Лёгкие (стилизованные) -->
             <path d="M110 110 C90 110 80 130 80 150 C80 180 100 190 110 190 C120 190 125 180 125 170 L125 130 C125 120 120 110 110 110 Z" fill="#8ED1C2" opacity="0.9"/>
             <path d="M190 110 C210 110 220 130 220 150 C220 180 200 190 190 190 C180 190 175 180 175 170 L175 130 C175 120 180 110 190 110 Z" fill="#8ED1C2" opacity="0.9"/>
-            <!-- Трахея -->
             <rect x="140" y="85" width="20" height="40" rx="10" fill="#4f8f7b"/>
-            <!-- Игровая звезда (награда) -->
             <polygon points="150,60 155,75 170,75 158,85 163,100 150,90 137,100 142,85 130,75 145,75" fill="#F19B63" stroke="#fff" stroke-width="2"/>
-            <!-- Искры -->
             <circle cx="90" cy="90" r="4" fill="#A98BEA"/>
             <circle cx="210" cy="100" r="5" fill="#F19B63"/>
             <circle cx="100" cy="210" r="3" fill="#8ED1C2"/>
@@ -2382,16 +2378,16 @@ if page == "Главная":
 
     st.markdown("---")
 
-    # --- CORE GAME LOOP EXPLANATION ---
-    st.markdown("### 🔄 Как это работает?")
+    # --- 2. CORE GAME LOOP ---
+    st.markdown("### 🔄 Игровой цикл: как это работает?")
     c1, arrow1, c2, arrow2, c3 = st.columns([1, 0.1, 1, 0.1, 1])
     
     with c1:
         st.markdown("""
         <div class="loop-card">
             <span class="loop-icon">🫁</span>
-            <b>Выполняй задания</b>
-            <p class="muted" style="font-size:0.9rem; margin-top:8px;">Дыхательная гимнастика, аэробные или силовые модули по 2-5 минут.</p>
+            <b>1. Забота о здоровье</b>
+            <p class="muted" style="font-size:0.85rem; margin-top:8px;">Выполняйте короткие модули: дыхание, аэробика или легкая сила.</p>
         </div>
         """, unsafe_allow_html=True)
     with arrow1:
@@ -2400,8 +2396,8 @@ if page == "Главная":
         st.markdown("""
         <div class="loop-card">
             <span class="loop-icon">🪙</span>
-            <b>Получай награды</b>
-            <p class="muted" style="font-size:0.9rem; margin-top:8px;">Зарабатывай XP, монеты для магазина и <b>попытки для шутера</b>.</p>
+            <b>2. Получение ресурсов</b>
+            <p class="muted" style="font-size:0.85rem; margin-top:8px;">Получайте XP, монеты для магазина и попытки для игры.</p>
         </div>
         """, unsafe_allow_html=True)
     with arrow2:
@@ -2410,104 +2406,133 @@ if page == "Главная":
         st.markdown("""
         <div class="loop-card" style="background: linear-gradient(135deg, #2c5e4f 0%, #4f8f7b 100%); color: white; border: none;">
             <span class="loop-icon">🎯</span>
-            <b style="color:white;">Защищай лёгкие</b>
-            <p style="font-size:0.9rem; margin-top:8px; color: #e8f4f0;">Трать попытки в мини-игре, побеждай боссов и прокачивай персонажа!</p>
+            <b style="color:white;">3. Игра и прогресс</b>
+            <p style="font-size:0.85rem; margin-top:8px; color: #e8f4f0;">Тратьте попытки в шутере, побеждайте боссов и развивайте персонажа!</p>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # --- HUD METRICS ---
-    st.markdown("### 📊 Твой прогресс")
+    # --- 3. HUD METRICS ---
+    st.markdown("### 📊 Ваш прогресс")
     h1, h2, h3, h4 = st.columns(4)
     with h1:
-        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Уровень</div><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['level']}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='hud-metric'><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['level']}</div><div class='hud-sub'>Уровень</div></div>", unsafe_allow_html=True)
     with h2:
-        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Опыт (XP)</div><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['xp']}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='hud-metric'><div style='font-size:1.8rem; font-weight:800; color:#2c5e4f;'>{u['xp']}</div><div class='hud-sub'>Опыт (XP)</div></div>", unsafe_allow_html=True)
     with h3:
-        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Монеты</div><div style='font-size:1.8rem; font-weight:800; color:#F19B63;'>🪙 {u['coins']}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='hud-metric'><div style='font-size:1.8rem; font-weight:800; color:#F19B63;'>🪙 {u['coins']}</div><div class='hud-sub'>Монеты</div></div>", unsafe_allow_html=True)
     with h4:
-        st.markdown(f"<div class='hud-metric'><div style='font-size:0.8rem; color:#68726e;'>Попытки шутера</div><div style='font-size:1.8rem; font-weight:800; color:#A98BEA;'>🎯 {get_shooter_state()['attempts']}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='hud-metric'><div style='font-size:1.8rem; font-weight:800; color:#A98BEA;'>🎯 {get_shooter_state()['attempts']}</div><div class='hud-sub'>Попытки шутера</div></div>", unsafe_allow_html=True)
 
-    st.markdown(f"**Цель на неделю:** {week_training_count()} / {u['weekly_goal']} занятий")
+    st.markdown(f"**🎯 Цель на неделю:** {week_training_count()} / {u['weekly_goal']} тренировок")
     st.progress(min(week_training_count() / max(u['weekly_goal'], 1), 1.0))
 
     st.markdown("---")
 
-    # --- TODAY'S MISSIONS ---
+    # --- 4. TODAY'S MISSIONS (ПРОСТОЙ СТИЛЬ КАРТОЧЕК) ---
     st.markdown("### 📋 Задания на сегодня")
-    st.caption("Каждое уникальное задание можно выполнить 1 раз в день для получения награды. Повторять можно сколько угодно!")
+    st.caption("💡 Каждое задание можно выполнить 1 раз в день для получения награды. Повторять упражнения для здоровья можно сколько угодно!")
     
     missions = [
-        ("exercise", "🏃", "Лёгочная реабилитация", "Выбери модуль: дыхание, аэробика или сила", 100, 50),
-        ("education", "🧠", "Знание дня", "Ответь на вопрос о ХОБЛ", 30, 10),
-        ("checkin", "❤️", "Самонаблюдение", "Оцени одышку, кашель и энергию", 20, 5),
-        ("weekly", "🎯", "Задача недели", "Преодолей барьер и составь план", 60, 15)
+        ("exercise", "🏃", "Лёгочная реабилитация", "Дыхание, аэробика или силовая нагрузка. +1 попытка шутера за каждый уникальный модуль.", 100, 50),
+        ("education", "🧠", "Знание дня", "Короткий тест о ХОБЛ. Понимание болезни помогает вовремя действовать по плану.", 30, 10),
+        ("checkin", "❤️", "Самонаблюдение", "Оцените одышку, кашель и энергию. Помогает вам и врачу видеть динамику состояния.", 20, 5),
+        ("weekly", "🎯", "Задача недели", "Выявите главный барьер и составьте реалистичный план для регулярных занятий.", 60, 15)
     ]
     
     for typ, icon, title, desc, xp, coins in missions:
-        is_done = mission_done(typ)
+        reward_text = f"+{xp} XP, +{coins} 🪙"
+        if typ == "exercise":
+            reward_text += ", +1 🎯 за модуль"
+            
+        # Простой и чистый стиль карточки, как в оригинале
+        st.markdown(f"<div class='card'><h3>{icon} {title}</h3><p>{desc}</p><span class='muted'>Награда: {reward_text}</span></div>", unsafe_allow_html=True)
         
-        # Для exercise проверяем, сколько из 3 модулей сделано
         if typ == "exercise":
             done_count = sum(1 for mod in REHAB_MODULES.values() if mission_done(mod["mission_type"]))
-            reward_text = f"+{xp} XP, +{coins}🪙, +1🎯"
-            status_text = f"Выполнено модулей: {done_count}/3" if done_count > 0 else "Не начато"
-        else:
-            reward_text = f"+{xp} XP, +{coins}🪙"
-            status_text = "Выполнено ✅" if is_done else "Ожидает"
-
-        st.markdown(f"""
-        <div class="mission-card" style="opacity: {'0.7' if is_done and typ != 'exercise' else '1.0'}">
-            <div style="font-size: 2rem; margin-right: 16px;">{icon}</div>
-            <div class="mission-info">
-                <b style="font-size: 1.1rem;">{title}</b>
-                <div class="muted" style="font-size: 0.9rem; margin-top: 4px;">{desc}</div>
-                <div style="font-size: 0.8rem; color: #4f8f7b; font-weight: 600; margin-top: 4px;">{status_text}</div>
-            </div>
-            <div class="mission-reward">
-                {reward_text}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Кнопки действий
-        col_btn1, col_btn2 = st.columns([3, 1])
-        with col_btn1:
-            if typ == "exercise":
-                if done_count < 3:
-                    if st.button("Выбрать модуль тренировки", key=f"home_start_{typ}", type="primary" if done_count==0 else "secondary"):
-                        reset_mission_state()
-                        st.session_state.selected_mission = typ
-                        go("Детальная миссия")
-                        st.rerun()
-                else:
-                    st.success("🏆 Все модули на сегодня пройдены! Можно повторить для здоровья, но без наград.", icon="✅")
+            if done_count >= 3:
+                st.success("🏆 Все 3 модуля на сегодня пройдены!")
             else:
-                if is_done:
-                    st.success("Уже выполнено", icon="✅")
-                else:
-                    if st.button("Открыть задание", key=f"home_start_{typ}", type="primary"):
-                        reset_mission_state()
-                        st.session_state.selected_mission = typ
-                        go("Детальная миссия")
-                        st.rerun()
+                if st.button("Выбрать модуль тренировки", key=f"home_{typ}", type="primary"):
+                    reset_mission_state()
+                    st.session_state.selected_mission = typ
+                    go("Детальная миссия")
+                    st.rerun()
+        else:
+            if mission_done(typ):
+                st.success("Уже выполнено ✅")
+            else:
+                if st.button("Открыть", key=f"home_{typ}", type="primary"):
+                    reset_mission_state()
+                    st.session_state.selected_mission = typ
+                    go("Детальная миссия")
+                    st.rerun()
 
     st.markdown("---")
     
-    # --- CHARACTER TEASER ---
-    st.markdown("### 👤 Твой персонаж")
-    st.caption("Выполняй задания, зарабатывай монеты и покупай новую экипировку в магазине!")
+    # --- 5. CHARACTER TEASER ---
+    st.markdown("### 👤 Ваш персонаж и пространство")
+    st.caption("Персонализация аватара повышает мотивацию регулярно возвращаться к приложению.")
     
     c_avatar, c_room = st.columns([1, 2])
     with c_avatar:
         st.markdown(avatar_svg(TOPS[u["equipped_top"]][1], BOTTOMS[u["equipped_bottom"]][1], SHOES[u["equipped_shoes"]][1]), unsafe_allow_html=True)
-        if st.button("Перейти в Магазин / Персонаж", use_container_width=True):
+        if st.button("🛍️ Перейти в Магазин / Персонаж", use_container_width=True, type="secondary"):
             go("Магазин")
             st.rerun()
     with c_room:
         st.markdown(room_svg(ROOMS[u['room_theme']][2], ROOMS[u['room_theme']][3]), unsafe_allow_html=True)
-
+    
+        st.markdown("---")
+    
+    # --- 6. ДОПОЛНИТЕЛЬНЫЕ РАЗДЕЛЫ ---
+    st.markdown("###  Дополнительные разделы")
+    st.caption("Инструменты для самоменеджмента и отслеживания прогресса")
+    
+    info1, info2, info3 = st.columns(3)
+    
+    with info1:
+        st.markdown("""
+        <div class="loop-card">
+            <span class="loop-icon">🫁</span>
+            <b>Симптомы</b>
+            <p class="muted" style="font-size:0.85rem; margin-top:8px;">
+                Дневник самонаблюдения. Отслеживайте одышку, кашель, мокроту и энергию. Помогает видеть динамику состояния и вовремя замечать изменения.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Открыть дневник", key="home_symptoms", use_container_width=True):
+            go("Симптомы")
+            st.rerun()
+    
+    with info2:
+        st.markdown("""
+        <div class="loop-card">
+            <span class="loop-icon">📖</span>
+            <b>Знания о ХОБЛ</b>
+            <p class="muted" style="font-size:0.85rem; margin-top:8px;">
+                База знаний о заболевании, реабилитации и самоменеджменте. Короткие статьи, которые помогают лучше понимать своё состояние.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Читать статьи", key="home_knowledge", use_container_width=True):
+            go("Знания о ХОБЛ")
+            st.rerun()
+    
+    with info3:
+        st.markdown("""
+        <div class="loop-card">
+            <span class="loop-icon">📈</span>
+            <b>Прогресс</b>
+            <p class="muted" style="font-size:0.85rem; margin-top:8px;">
+                Сводка вашего прогресса: уровень, XP, монеты, серия дней и последние записи самонаблюдения. Вся ключевая статистика в одном месте.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Смотреть прогресс", key="home_progress", use_container_width=True):
+            go("Прогресс")
+            st.rerun()
 # -----------------------------
 # Missions
 # -----------------------------
